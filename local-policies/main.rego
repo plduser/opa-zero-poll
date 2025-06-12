@@ -21,5 +21,5 @@ roles_for_action := {
 
 # Sprawdza czy użytkownik ma daną rolę w tenancie
 user_has_role(user_id, tenant_id, role) if {
-    role in data["new-architecture"]["components"]["opa-standalone"]["policies"]["users"][tenant_id][user_id].roles
+    role in data.users[tenant_id][user_id].roles
 } 

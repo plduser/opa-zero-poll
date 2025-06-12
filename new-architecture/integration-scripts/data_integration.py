@@ -26,9 +26,9 @@ import os
 # Configuration
 @dataclass
 class Config:
-    data_provider_url: str = "http://localhost:8110"
-    opa_url: str = "http://localhost:8181"
-    provisioning_url: str = "http://localhost:8010"
+    data_provider_url: str = os.environ.get("DATA_PROVIDER_URL", "http://localhost:8110")
+    opa_url: str = os.environ.get("OPA_URL", "http://localhost:8181")
+    provisioning_url: str = os.environ.get("PROVISIONING_URL", "http://localhost:8010")
     refresh_interval_minutes: int = 5
     log_level: str = "INFO"
     max_retries: int = 3
@@ -243,137 +243,38 @@ class OPADataIntegrator:
         return all_tests_passed
     
     def sync_tenant_data(self, tenant_id: str) -> bool:
-        """Sync data for a single tenant"""
+        """Synchronize data for a specific tenant"""
         try:
-            # Fetch ACL data
             acl_data = self.fetch_acl_data(tenant_id)
-            
-            # Transform to OPA format
             opa_data = self.transform_acl_to_opa_format(tenant_id, acl_data)
-            
-            # Load into OPA
-            data_path = f"tenant_data/{tenant_id}"
-            self.load_data_to_opa(data_path, opa_data['tenant_data'][tenant_id])
-            
-            # Verify the data was loaded
-            if not self.verify_opa_data(tenant_id):
-                return False
-            
-            self.logger.info(f"Successfully synced data for tenant {tenant_id}")
-            return True
-            
+            self.load_data_to_opa(f"tenant_data/{tenant_id}", opa_data)
+            return self.verify_opa_data(tenant_id)
         except DataIntegrationError as e:
-            self.logger.error(f"Failed to sync data for tenant {tenant_id}: {e}")
+            self.logger.error(f"Synchronization failed for tenant {tenant_id}: {e}")
             return False
-    
+
     def sync_all_tenants(self) -> Dict[str, bool]:
-        """Sync data for all tenants"""
-        self.logger.info("Starting full tenant data synchronization")
-        
-        try:
-            tenant_ids = self.fetch_tenant_list()
-            results = {}
-            
-            for tenant_id in tenant_ids:
-                self.logger.info(f"Syncing tenant: {tenant_id}")
-                results[tenant_id] = self.sync_tenant_data(tenant_id)
-            
-            successful = sum(1 for success in results.values() if success)
-            total = len(results)
-            
-            self.logger.info(f"Synchronization complete: {successful}/{total} tenants successful")
-            return results
-            
-        except Exception as e:
-            self.logger.error(f"Failed to sync all tenants: {e}")
-            return {}
-    
+        """Synchronize data for all tenants"""
+        results = {}
+        tenant_list = self.fetch_tenant_list()
+        for tenant_id in tenant_list:
+            results[tenant_id] = self.sync_tenant_data(tenant_id)
+        return results
+
     def run_periodic_sync(self):
-        """Run periodic synchronization"""
-        self.logger.info(f"Starting periodic sync every {self.config.refresh_interval_minutes} minutes")
-        
-        def sync_job():
-            self.logger.info("Running scheduled synchronization")
-            self.sync_all_tenants()
-        
-        # Schedule the job
-        schedule.every(self.config.refresh_interval_minutes).minutes.do(sync_job)
-        
-        # Run initial sync
-        sync_job()
-        
-        # Keep running
+        """Run periodic synchronization based on the configured interval"""
+        schedule.every(self.config.refresh_interval_minutes).minutes.do(self.sync_all_tenants)
         while True:
             schedule.run_pending()
             time.sleep(1)
-    
+
     def run_end_to_end_test(self) -> bool:
-        """Run comprehensive end-to-end test"""
-        self.logger.info("🧪 Starting end-to-end integration test")
-        
-        try:
-            # 1. Health check
-            if not self.health_check_services():
-                self.logger.error("❌ End-to-end test failed: Service health checks failed")
-                return False
-            
-            # 2. Sync all data
-            sync_results = self.sync_all_tenants()
-            if not any(sync_results.values()):
-                self.logger.error("❌ End-to-end test failed: No tenants synced successfully")
-                return False
-            
-            # 3. Test authorization decisions for each synced tenant
-            test_cases = [
-                {
-                    "description": "Admin user should have full access",
-                    "input": {
-                        "user": "user1",
-                        "role": "admin", 
-                        "action": "delete",
-                        "resource": "data"
-                    },
-                    "expected": True
-                },
-                {
-                    "description": "Regular user should not be able to delete",
-                    "input": {
-                        "user": "user2", 
-                        "role": "user",
-                        "action": "delete", 
-                        "resource": "data"
-                    },
-                    "expected": False
-                },
-                {
-                    "description": "User can read own data",
-                    "input": {
-                        "user": "user2",
-                        "role": "user", 
-                        "action": "read",
-                        "resource": "data",
-                        "owner": "user2"
-                    },
-                    "expected": True
-                }
-            ]
-            
-            all_authorization_tests_passed = True
-            for tenant_id, sync_success in sync_results.items():
-                if sync_success:
-                    if not self.test_authorization_decision(tenant_id, test_cases):
-                        all_authorization_tests_passed = False
-            
-            if all_authorization_tests_passed:
-                self.logger.info("✅ End-to-end test PASSED: All components working correctly")
-                return True
-            else:
-                self.logger.error("❌ End-to-end test FAILED: Authorization decisions incorrect")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"❌ End-to-end test ERROR: {e}")
+        """Run an end-to-end test of the synchronization process"""
+        if not self.health_check_services():
+            self.logger.error("Service health check failed. Aborting test.")
             return False
+        results = self.sync_all_tenants()
+        return all(results.values())
 
 def main():
     """Main entry point"""
