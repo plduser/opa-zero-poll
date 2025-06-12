@@ -12,6 +12,9 @@ services:
       - PORT=8110
       - DEBUG=false
       - WEBHOOK_SECRET=twoj_super_tajny_klucz123!@#
+      - INTEGRATION_SCRIPTS_URL=http://integration-scripts-api:8000
+      - OPA_URL=http://opa-standalone-new:8181
+      - PROVISIONING_API_URL=http://provisioning-api-new:8010
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8110/health"]
       interval: 30s
@@ -64,8 +67,134 @@ services:
     networks:
       - new-arch-network
 
+  # Integration Scripts API - synchronizacja danych między serwisami
+  integration-scripts:
+    build: ./new-architecture/integration-scripts
+    platform: linux/arm64
+    container_name: integration-scripts-api
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - DEBUG=false
+      - DATA_PROVIDER_URL=http://data-provider-api:8110
+      - OPA_URL=http://opa-standalone-new:8181
+      - PROVISIONING_URL=http://provisioning-api-new:8010
+    depends_on:
+      - data-provider-api
+      - provisioning-api
+      - opa-standalone
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # Postgres - broadcast channel dla OPAL Server/Client komunikacji
+  broadcast_channel:
+    image: postgres:alpine
+    container_name: broadcast_channel
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # OPAL Server - Policy Information Point (PIP)
+  opal-server:
+    image: permitio/opal-server:latest
+    container_name: opal-server
+    ports:
+      - "7002:7002"  # OPAL Server API
+    volumes:
+      - ./data-config.json:/data-config.json
+    environment:
+      # Broadcast channel (Postgres)
+      - OPAL_BROADCAST_URI=postgres://postgres:postgres@broadcast_channel:5432/postgres
+      
+      # GitHub Policy Repository
+      - OPAL_POLICY_REPO_URL=https://github.com/plduser/opa-zero-poll.git
+      - OPAL_POLICY_REPO_MAIN_BRANCH=main
+      - OPAL_POLICY_REPO_PATH=new-architecture/components/opa-standalone/policies
+      - OPAL_POLICY_REPO_POLLING_INTERVAL=30
+      
+      # Data Configuration
+      - DATA_CONFIG_SOURCES_FILE_PATH=/data-config.json
+      - DATA_CONFIG_ENABLED=true
+      
+      # Server Performance
+      - LOG_LEVEL=DEBUG
+    depends_on:
+      - broadcast_channel
+      - data-provider-api
+      - provisioning-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7002/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # OPAL Client - Synchronizator (Policy Enforcement Point)
+  opal-client:
+    image: permitio/opal-client:latest
+    container_name: opal-client
+    ports:
+      - "7001:7000"  # OPAL Client API
+    environment:
+      # OPAL Server connection
+      - OPAL_SERVER_URL=http://opal-server:7002
+      - OPAL_CLIENT_STAT_ID=opal-client-1
+      
+      # OPA connection (External OPA - nie inline)
+      - OPAL_POLICY_STORE_URL=http://opa-standalone-new:8181
+      - OPAL_POLICY_SUBSCRIPTION_DIRS=new-architecture/components/opa-standalone/policies
+      
+      # Data sources configuration
+      - OPAL_DATA_UPDATER_ENABLED=true
+      - OPAL_INLINE_OPA_ENABLED=false
+      
+      # Client Performance
+      - OPAL_LOG_LEVEL=DEBUG
+      - OPAL_LOG_FORMAT_INCLUDE_PID=true
+      
+      # Disable authentication completely
+      - OPAL_AUTH_TOKEN=
+      - OPAL_CLIENT_TOKEN=
+    depends_on:
+      - opal-server
+      - opa-standalone
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7000/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
 volumes:
   provisioning_data:
+    driver: local
+  postgres_data:
     driver: local
 
 networks:

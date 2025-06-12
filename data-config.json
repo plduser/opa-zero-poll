@@ -1,0 +1,24 @@
+{
+  "entries": [
+    {
+      "url": "http://data-provider-api:8110/api/data",
+      "config": {
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "topics": ["policy_data"],
+      "dst_path": "/data/provider"
+    },
+    {
+      "url": "http://provisioning-api-new:8010/api/tenants",
+      "config": {
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      },
+      "topics": ["tenant_data"],
+      "dst_path": "/data/tenants"
+    }
+  ]
+} 
