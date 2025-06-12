@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # Redis jako broadcast channel dla OPAL Server/Client komunikacji
+  redis:
+    image: redis:7-alpine
+    container_name: opal-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - opal-network
+
+  # OPAL Server - Policy Information Point (PIP)
+  opal-server:
+    image: permitio/opal-server:latest
+    container_name: opal-server
+    ports:
+      - "7002:7002"  # OPAL Server API
+      - "7003:7003"  # OPAL Server WebSocket
+    environment:
+      # Broadcast channel (Redis PubSub)
+      - OPAL_BROADCAST_URI=redis://redis:6379
+      
+      # GitHub Policy Repository
+      - OPAL_POLICY_REPO_URL=https://github.com/permitio/opal-example-policy-repo
+      - OPAL_POLICY_REPO_POLLING_INTERVAL=30
+      
+      # Data Sources Configuration (Flask mocki)
+      - OPAL_DATA_CONFIG_SOURCES={"config":{"entries":[{"url":"http://data-provider-api:8110/tenants/tenant1/acl","topics":["policy_data"],"dst_path":"/tenant1"},{"url":"http://data-provider-api:8110/tenants/tenant2/acl","topics":["policy_data"],"dst_path":"/tenant2"},{"url":"http://provisioning-api:8010/tenants","topics":["policy_data"],"dst_path":"/tenants"}]}}
+      
+      # Server Configuration
+      - UVICORN_NUM_WORKERS=2
+      - OPAL_LOG_FORMAT_INCLUDE_PID=true
+      - OPAL_LOG_LEVEL=INFO
+      
+      # Security (opcjonalne)
+      - OPAL_AUTH_PRIVATE_KEY_PASSPHRASE=""
+      - OPAL_AUTH_MASTER_TOKEN=""
+    depends_on:
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7002/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - opal-network
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  opal-network:
+    driver: bridge 
