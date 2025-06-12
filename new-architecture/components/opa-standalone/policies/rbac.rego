@@ -5,8 +5,7 @@ import rego.v1
 # Default deny - security first approach
 default allow := false
 
-# UWAGA
-# My policy works?
+# My policy works
 # Admin role can perform all actions on all resources
 allow if {
 	input.role == "admin"
