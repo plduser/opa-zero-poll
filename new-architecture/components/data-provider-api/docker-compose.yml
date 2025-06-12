@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  data-provider-api:
+    build: .
+    container_name: data-provider-api-standalone
+    ports:
+      - "8110:8110"
+    environment:
+      - PORT=8110
+      - DEBUG=true
+    volumes:
+      - ./logs:/app/logs:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8110/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped 

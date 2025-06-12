@@ -1,0 +1,91 @@
+version: '3.8'
+
+services:
+  opal-server:
+    image: permitio/opal-server:latest
+    environment:
+      - OPAL_POLICY_REPO_URL=https://github.com/plduser/opa-zero-poll.git
+      - OPAL_POLICY_REPO_MAIN_BRANCH=main
+      - OPAL_BROADCAST_URI=sqlite:///opal_broadcast.db
+    volumes:
+      - ./opal-data:/data
+      - ./logs/opal-server.log:/var/log/opal-server.log
+    ports:
+      - "7002:7002"
+    command: >
+      sh -c "exec gunicorn -b 0.0.0.0:7002 -k uvicorn.workers.UvicornWorker --workers=1 -c ./gunicorn_conf.py opal_server.main:app -t 30 --keep-alive 5 2>&1 | tee /var/log/opal-server.log"
+
+  opal-client:
+    image: permitio/opal-client:latest
+    depends_on:
+      - opal-server
+      - opa
+    environment:
+      - OPAL_SERVER_URL=http://opal-server:7002
+      - OPAL_POLICY_SUBSCRIPTION_DIRS=policies
+      - OPAL_OPA_SERVER_URL=http://opa:8181
+    ports:
+      - "7001:7000"
+    volumes:
+      - ./logs/opal-client.log:/var/log/opal-client.log
+    command: >
+      sh -c "exec gunicorn -b 0.0.0.0:7000 -k uvicorn.workers.UvicornWorker --workers=1 -c ./gunicorn_conf.py opal_client.main:app -t 30 --keep-alive 5 2>&1 | tee /var/log/opal-client.log"
+
+  opa:
+    image: openpolicyagent/opa:latest
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+    ports:
+      - "8181:8181"
+
+  provisioning-api:
+    build: .
+    container_name: provisioning-api
+    ports:
+      - "8010:8010"
+    environment:
+      - PORT=8010
+      - DEBUG=false
+      - DATABASE_PATH=/app/data/tenants.db
+    volumes:
+      # Persist database
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - provisioning-network
+
+  data-provider-api:
+    build: ./data-provider-api
+    ports:
+      - "8100:8100"
+
+  opa-standalone:
+    build: .
+    container_name: opa-standalone
+    ports:
+      - "8181:8181"
+    networks:
+      - opa-network
+    environment:
+      - OPA_LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8181/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+networks:
+  provisioning-network:
+    driver: bridge
+  opa-network:
+    driver: bridge

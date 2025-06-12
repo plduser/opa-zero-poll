@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # Data Provider API - symuluje zewnętrzny system ACL
+  data-provider-api:
+    build: ./new-architecture/components/data-provider-api
+    platform: linux/arm64
+    container_name: data-provider-api
+    ports:
+      - "8110:8110"
+    environment:
+      - PORT=8110
+      - DEBUG=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8110/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # Provisioning API - zarządzanie tenantami
+  provisioning-api:
+    build: ./new-architecture/components/provisioning-api
+    platform: linux/arm64
+    container_name: provisioning-api-new
+    ports:
+      - "8010:8010"
+    environment:
+      - PORT=8010
+      - DEBUG=false
+      - DATABASE_PATH=/app/data/tenants.db
+    volumes:
+      - provisioning_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # OPA Standalone - autoryzacja z politikami RBAC
+  opa-standalone:
+    build: ./new-architecture/components/opa-standalone
+    platform: linux/arm64
+    container_name: opa-standalone-new
+    ports:
+      - "8181:8181"
+    environment:
+      - OPA_LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8181/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+volumes:
+  provisioning_data:
+    driver: local
+
+networks:
+  new-arch-network:
+    driver: bridge 

@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  provisioning-api:
+    build: .
+    container_name: provisioning-api
+    ports:
+      - "8010:8010"
+    environment:
+      - PORT=8010
+      - DEBUG=false
+      - DATABASE_PATH=/app/data/tenants.db
+    volumes:
+      # Persist database
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - provisioning-network
+
+networks:
+  provisioning-network:
+    driver: bridge 

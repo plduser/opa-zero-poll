@@ -1,0 +1,74 @@
+{
+  "data_provider_url": "http://localhost:8110",
+  "opa_url": "http://localhost:8181", 
+  "provisioning_url": "http://localhost:8010",
+  "refresh_interval_minutes": 5,
+  "log_level": "INFO",
+  "max_retries": 3,
+  "retry_delay": 2,
+  "test_cases": [
+    {
+      "description": "Admin user should have full access to any resource",
+      "input": {
+        "user": "admin1",
+        "role": "admin",
+        "action": "delete",
+        "resource": "data"
+      },
+      "expected": true
+    },
+    {
+      "description": "Regular user should not be able to delete resources",
+      "input": {
+        "user": "user1",
+        "role": "user", 
+        "action": "delete",
+        "resource": "data",
+        "owner": "user2"
+      },
+      "expected": false
+    },
+    {
+      "description": "User can read their own data",
+      "input": {
+        "user": "user1",
+        "role": "user",
+        "action": "read", 
+        "resource": "data",
+        "owner": "user1"
+      },
+      "expected": true
+    },
+    {
+      "description": "User cannot read other user's data",
+      "input": {
+        "user": "user1",
+        "role": "user",
+        "action": "read",
+        "resource": "data", 
+        "owner": "user2"
+      },
+      "expected": false
+    },
+    {
+      "description": "Viewer role can only read public resources",
+      "input": {
+        "user": "viewer1",
+        "role": "viewer",
+        "action": "read",
+        "resource": "public"
+      },
+      "expected": true
+    },
+    {
+      "description": "Viewer role cannot write",
+      "input": {
+        "user": "viewer1", 
+        "role": "viewer",
+        "action": "write",
+        "resource": "public"
+      },
+      "expected": false
+    }
+  ]
+} 
