@@ -1,7 +1,7 @@
 # ARCHITEKTURA SYSTEMU OPA ZERO POLL
 
 ## Cel projektu
-Krótki opis celu systemu, np. "System do zarządzania politykami RBAC i autoryzacją oparty na OPA, bez OPAL."
+Krótki opis celu systemu, np. "System do zarządzania politykami RBAC i autoryzacją oparty na OPA, z integracją OPAL."
 
 ---
 
@@ -17,6 +17,9 @@ graph TD
     C -- health check --> B
     C -- health check --> D
     C -- health check --> E
+    D -- sync --> F(OPAL Client)
+    F -- sync --> G(OPAL Server)
+    G -- update --> D
 ```
 
 ---
@@ -40,6 +43,12 @@ graph TD
 - Python
 - Synchronizacja danych i polityk, obsługa webhooków
 
+### OPAL Client
+- Synchronizuje dane z OPAL Server
+
+### OPAL Server
+- Zarządza politykami i synchronizacją z OPA
+
 ---
 
 ## Przepływ danych
@@ -47,11 +56,13 @@ graph TD
 2. Data Provider API odbiera webhook, wykrywa zmiany w politykach
 3. Integration Scripts synchronizuje dane i ładuje je do OPA
 4. OPA Standalone udostępnia decyzje autoryzacyjne przez REST
+5. OPAL Client synchronizuje dane z OPAL Server
+6. OPAL Server zarządza aktualizacjami polityk
 
 ---
 
 ## Uzasadnienia techniczne
-- Brak OPAL: prostsza architektura, mniej zależności
+- Integracja z OPAL: lepsza synchronizacja polityk, automatyzacja
 - REST i webhooki: łatwa integracja, automatyzacja
 - Mikroserwisy: łatwe testowanie, skalowanie
 

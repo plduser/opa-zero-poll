@@ -1,6 +1,6 @@
 # OPA Zero Poll
 
-**OPA Zero Poll** to nowoczesny system zarządzania politykami RBAC i autoryzacją, oparty na OPA, bez zależności od OPAL. Architektura oparta o mikroserwisy, integrację przez REST i webhooki GitHub.
+**OPA Zero Poll** to nowoczesny system zarządzania politykami RBAC i autoryzacją, oparty na OPA, z integracją OPAL. Architektura oparta o mikroserwisy, integrację przez REST i webhooki GitHub.
 
 ---
 
@@ -16,12 +16,17 @@ graph TD
     C -- health check --> B
     C -- health check --> D
     C -- health check --> E
+    D -- sync --> F(OPAL Client)
+    F -- sync --> G(OPAL Server)
+    G -- update --> D
 ```
 
 - **Data Provider API** (Flask, port 8110) – dostarcza dane ACL dla tenantów, odbiera webhooki GitHub
 - **Provisioning API** (Flask, port 8010) – zarządzanie tenantami
 - **OPA Standalone** (port 8181) – silnik autoryzacji z politykami Rego
 - **Integration Scripts** – synchronizacja danych i polityk, obsługa webhooków
+- **OPAL Client** – synchronizuje dane z OPAL Server
+- **OPAL Server** – zarządza politykami i synchronizacją z OPA
 
 ---
 

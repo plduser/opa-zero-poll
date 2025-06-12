@@ -5,6 +5,7 @@ import rego.v1
 # Default deny - security first approach
 default allow := false
 
+#
 # My policy works
 # Admin role can perform all actions on all resources
 allow if {
