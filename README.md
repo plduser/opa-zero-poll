@@ -122,7 +122,8 @@ graph TD
 
 ## Autorzy
 
-- Jacek Paszek (plduser) 
+- Jacek Paszek (plduser)
+- Claude (Anthropic) - AI Assistant 
 
 ---
 
