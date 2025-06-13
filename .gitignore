@@ -33,6 +33,9 @@ tasks/
 .roomodes
 .windsurfrules
 
+# Local policy testing (use new-architecture/components/opa-standalone/policies)
+local-policies/
+
 # Python cache
 __pycache__/
 *.pyc
