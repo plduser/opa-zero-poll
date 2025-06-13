@@ -22,7 +22,8 @@ Docelowy system ma obsługiwać:
 #### 🏢 **Data Provider API** (Port 8110)
 **Cel**: Symuluje **Enterprise Data Source** z diagramu docelowego
 - Dostarcza dane użytkowników, ról i uprawnień dla każdego tenanta
-- Odbiera webhooki GitHub o zmianach w politykach
+- Odbiera webhooki GitHub o zmianach w politykach i przekierowuje je do OPAL
+- Orkiestruje synchronizację danych między systemami przez API Integration Scripts
 - W docelowym systemie zostanie zastąpiony przez prawdziwe systemy HR/ERP/CRM
 
 #### ⚙️ **Provisioning API** (Port 8010) 
@@ -67,7 +68,7 @@ graph TD
     G -- update --> D
 ```
 
-- **Data Provider API** (Flask, port 8110) – dostarcza dane ACL dla tenantów, odbiera webhooki GitHub
+- **Data Provider API** (Flask, port 8110) – dostarcza dane ACL dla tenantów, odbiera webhooki GitHub, orkiestruje synchronizację danych
 - **Provisioning API** (Flask, port 8010) – zarządzanie tenantami
 - **OPA Standalone** (port 8181) – silnik autoryzacji z politykami Rego
 - **Integration Scripts** – synchronizacja danych i polityk, obsługa webhooków
