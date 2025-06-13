@@ -119,3 +119,132 @@ graph TD
 ## Autorzy
 
 - Jacek Paszek (plduser) 
+
+---
+
+## 🖥️ Konfiguracja dla różnych systemów operacyjnych
+
+### macOS (Apple Silicon - M1/M2/M3)
+
+**Problem**: Kontenery Docker mogą mieć problemy z architekturą ARM64.
+
+**Rozwiązanie**: W pliku `docker-compose.yml` już dodano `platform: linux/arm64` dla wszystkich serwisów. Jeśli nadal występują problemy:
+
+```yaml
+# W docker-compose.yml dla każdego serwisu:
+services:
+  data-provider-api:
+    platform: linux/arm64  # ← Upewnij się że ta linia istnieje
+    build: ./new-architecture/components/data-provider-api
+  
+  # Dla obrazów OPAL i Postgres może być potrzebne dodanie platform:
+  opal-server:
+    image: permitio/opal-server:latest
+    platform: linux/arm64  # ← Dodaj jeśli występują problemy
+  
+  broadcast_channel:
+    image: postgres:alpine  
+    platform: linux/arm64  # ← Dodaj jeśli występują problemy
+```
+
+**Dodatkowe kroki**:
+1. Sprawdź czy Docker Desktop ma włączone "Use Rosetta for x86/amd64 emulation"
+2. Jeśli problemy z budowaniem, wymuś rebuild: `docker-compose build --no-cache`
+
+### macOS (Intel)
+
+**Zmiana wymagana**: Zamień `platform: linux/arm64` na `platform: linux/amd64` w `docker-compose.yml`:
+
+```yaml
+services:
+  data-provider-api:
+    platform: linux/amd64  # ← Zmień z arm64 na amd64
+```
+
+### Windows
+
+**Wymagania**:
+- Docker Desktop z WSL2
+- Git for Windows lub WSL2 Ubuntu
+
+**Zmiany w docker-compose.yml**:
+```yaml
+services:
+  data-provider-api:
+    platform: linux/amd64  # ← Użyj amd64 na Windows
+```
+
+**Potencjalne problemy**:
+- **Mapowanie portów**: Sprawdź czy porty 8000, 8010, 8110, 8181, 7001, 7002 nie są zajęte
+- **Ścieżki**: Używaj forward slashy (`/`) zamiast backslash (`\`) w ścieżkach
+
+### Linux (Ubuntu/Debian/RHEL)
+
+**Zmiany w docker-compose.yml**:
+```yaml
+services:
+  data-provider-api:
+    platform: linux/amd64  # ← Usuń lub zmień na amd64
+```
+
+**Dodatkowe zależności**:
+```bash
+# Ubuntu/Debian
+sudo apt update && sudo apt install docker.io docker-compose-plugin
+
+# RHEL/CentOS/Fedora  
+sudo dnf install docker docker-compose
+```
+
+### 🔧 Sprawdzenie konfiguracji
+
+Po dostosowaniu platformy, sprawdź czy wszystko działa:
+
+```bash
+# 1. Restart wszystkich kontenerów
+docker-compose down
+docker-compose up --build -d
+
+# 2. Sprawdź status
+docker-compose ps
+
+# 3. Test health checków
+curl http://localhost:8110/health
+curl http://localhost:8010/health
+curl http://localhost:8181/health
+curl http://localhost:8000/health
+```
+
+### 🚨 Częste problemy
+
+#### Problem z portami
+```bash
+# Sprawdź zajęte porty
+netstat -tulpn | grep :8110
+# lub na macOS
+lsof -i :8110
+
+# Zmień porty w docker-compose.yml jeśli zajęte:
+ports:
+  - "8111:8110"  # Użyj innego portu zewnętrznego
+```
+
+#### Problem z pamięcią
+```bash
+# Zwiększ zasoby Docker Desktop:
+# Settings → Resources → Advanced
+# RAM: minimum 4GB, zalecane 8GB
+# Swap: minimum 2GB
+```
+
+#### Problem z logami
+```bash
+# Sprawdź logi konkretnego serwisu
+docker-compose logs data-provider-api
+docker-compose logs opal-server
+
+# Sprawdź logi na żywo
+docker-compose logs -f
+```
+
+--- 
