@@ -104,9 +104,15 @@ graph TD
 
 4. **Dodaj tenant2 (wymagane do testów)**
    ```sh
+   # Sprawdź czy tenant2 już istnieje
+   curl http://localhost:8010/tenants
+   
+   # Jeśli tenant2 nie istnieje, dodaj go:
    curl -X POST http://localhost:8010/provision-tenant \
      -H "Content-Type: application/json" \
      -d '{"tenant_id": "tenant2", "tenant_name": "Test Company 2", "status": "active"}'
+   
+   # Jeśli otrzymasz "Tenant already exists" - to OK, przejdź do następnego kroku
    ```
 
 5. **Wykonaj synchronizację danych**
@@ -116,6 +122,10 @@ graph TD
 
 6. **Uruchom testy systemu**
    ```sh
+   # Zainstaluj wymagane zależności dla testów
+   pip install requests
+   
+   # Uruchom automatyczne testy
    python test_full_system.py
    ```
 
@@ -179,7 +189,24 @@ Wykonuje 6 różnych scenariuszy autoryzacji:
 
 **Komenda:**
 ```bash
+# Opcja 1: Automatyczne testy (wymaga pip install requests)
 python test_full_system.py
+
+# Opcja 2: Ręczne testowanie przez curl
+# 1. Health check serwisów
+curl http://localhost:8110/health  # Data Provider API
+curl http://localhost:8010/health  # Provisioning API  
+curl http://localhost:8181/health  # OPA Standalone
+curl http://localhost:8000/health  # Integration Scripts
+
+# 2. Sprawdź dane w OPA
+curl http://localhost:8181/v1/data/tenant_data/tenant1
+curl http://localhost:8181/v1/data/tenant_data/tenant2
+
+# 3. Test autoryzacji
+curl -X POST http://localhost:8181/v1/data/rbac/allow \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"user": "user1", "role": "admin", "action": "read", "resource": "data", "tenant": "tenant1"}}'
 ```
 
 **Oczekiwany wynik:**
