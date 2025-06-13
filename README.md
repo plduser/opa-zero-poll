@@ -4,7 +4,7 @@
 
 ---
 
-## 🎯 Założenia projektu (Proof of Concept)
+## Założenia projektu (Proof of Concept)
 
 Ten projekt jest **Proof of Concept (POC)**, który ma za zadanie **pokazać realizowalność** docelowej architektury systemu autoryzacji dla aplikacji enterprise. 
 
