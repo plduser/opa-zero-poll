@@ -62,9 +62,6 @@ graph TD
     C -- REST: /v1/data/tenant_data --> D(OPA Standalone)
     B -- REST: /tenants, /acl --> E(Provisioning API)
     E -- REST: /tenants --> B
-    C -- health check --> B
-    C -- health check --> D
-    C -- health check --> E
     D -- sync --> F(OPAL Client)
     F -- sync --> G(OPAL Server)
     G -- update --> D
