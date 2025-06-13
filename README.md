@@ -4,7 +4,56 @@
 
 ---
 
-## Architektura
+## 🎯 Założenia projektu (Proof of Concept)
+
+Ten projekt jest **Proof of Concept (POC)**, który ma za zadanie **pokazać realizowalność** docelowej architektury systemu autoryzacji dla aplikacji enterprise. 
+
+### Architektura docelowa
+![Architektura docelowa](docs/architektura-docelowa.png)
+
+Docelowy system ma obsługiwać:
+- **Wiele aplikacji klienckich** korzystających z centralnej autoryzacji
+- **Dynamiczne zarządzanie politykami** przez administratorów
+- **Skalowalne rozwiązanie** dla dużej liczby użytkowników i tenantów
+- **Real-time aktualizacje** polityk bez restartowania aplikacji
+
+### Rola komponentów w architekturze docelowej
+
+#### 🏢 **Data Provider API** (Port 8110)
+**Cel**: Symuluje **Enterprise Data Source** z diagramu docelowego
+- Dostarcza dane użytkowników, ról i uprawnień dla każdego tenanta
+- Odbiera webhooki GitHub o zmianach w politykach
+- W docelowym systemie zostanie zastąpiony przez prawdziwe systemy HR/ERP/CRM
+
+#### ⚙️ **Provisioning API** (Port 8010) 
+**Cel**: Symuluje **Tenant Management System** z diagramu docelowego
+- Zarządza cyklem życia tenantów (dodawanie, usuwanie, konfiguracja)
+- W docelowym systemie będzie zintegrowany z systemami onboardingu klientów
+
+#### 🔄 **Integration Scripts** (Port 8000)
+**Cel**: Implementuje **Data Synchronization Layer** z diagramu docelowego
+- Orkiestruje przepływ danych między systemami
+- Zapewnia transformację danych do formatu wymaganego przez OPA
+- Obsługuje health checks i monitoring
+
+#### 🛡️ **OPA + OPAL**
+**Cel**: Stanowią rdzeń **Policy Decision Point (PDP)** z diagramu docelowego
+- **OPA Standalone**: Silnik decyzyjny autoryzacji
+- **OPAL Server**: Zarządzanie politykami i ich dystrybucja
+- **OPAL Client**: Synchronizacja polityk w czasie rzeczywistym
+
+### 📋 Co dowodzi ten POC?
+
+1. **✅ Integracja mikroserwisów** - wszystkie komponenty komunikują się przez REST API
+2. **✅ Real-time updates** - zmiany w politykach są automatycznie propagowane przez OPAL
+3. **✅ Tenant isolation** - każdy tenant ma odrębne dane i polityki  
+4. **✅ GitHub-based policy management** - polityki są zarządzane jako kod
+5. **✅ Health monitoring** - każdy komponent eksponuje endpointy health check
+6. **✅ Skalowalna architektura** - komponenty mogą być niezależnie skalowane
+
+---
+
+## Architektura POC
 
 ```mermaid
 graph TD
