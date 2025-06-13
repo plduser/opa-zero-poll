@@ -32,10 +32,10 @@ Docelowy system ma obsługiwać:
 - W docelowym systemie będzie zintegrowany z systemami onboardingu klientów
 
 #### 🔄 **Integration Scripts** (Port 8000)
-**Cel**: Implementuje **Data Synchronization Layer** z diagramu docelowego
-- Orkiestruje przepływ danych między systemami
+**Cel**: Symuluje **legacy data processing** w obecnym POC
+- Orkiestruje przepływ danych między systemami (obecna implementacja)
 - Zapewnia transformację danych do formatu wymaganego przez OPA
-- Obsługuje health checks i monitoring
+- W docelowym systemie zostanie zastąpiony przez event-driven data sources
 
 #### 🛡️ **OPA + OPAL**
 **Cel**: Stanowią rdzeń **Policy Decision Point (PDP)** z diagramu docelowego
@@ -59,6 +59,7 @@ Docelowy system ma obsługiwać:
 ```mermaid
 graph TD
     A[Tenant Created Event] --> B[Tenant Provisioning Service]
+    B --> E[OPAL Server - Register Data Source]
     C[User Role Changed Event] --> D[User Data Sync Service]
     D --> E[OPAL Server POST /data-config]
     E --> F[OPAL Client]
