@@ -47,7 +47,7 @@ Docelowy system ma obsługiwać:
 
 1. **✅ Integracja mikroserwisów** - wszystkie komponenty komunikują się przez REST API
 2. **✅ Real-time updates** - zmiany w politykach są automatycznie propagowane przez OPAL
-3. **✅ Tenant isolation** - każdy tenant ma odrębne dane i polityki  
+3. **✅ Tenant isolation** - każdy tenant ma odrębne dane źródłowe (topiki w data-sources)  
 4. **✅ GitHub-based policy management** - polityki są zarządzane jako kod
 5. **✅ Health monitoring** - każdy komponent eksponuje endpointy health check
 6. **✅ Skalowalna architektura** - komponenty mogą być niezależnie skalowane
@@ -58,18 +58,18 @@ Docelowy system ma obsługiwać:
 
 ```mermaid
 graph TD
-    A[Tenant Created Event] --> B[Tenant Provisioning Service]
-    B --> E[OPAL Server - Register Data Source]
-    C[User Role Changed Event] --> D[User Data Sync Service]
-    D --> E[OPAL Server POST /data-config]
-    E --> F[OPAL Client]
-    F --> G[Data Provider API?tenant_id=X]
+    A["Tenant Created Event"] --> B["Tenant Provisioning Service"]
+    B --> E["OPAL Server<br/>Register Data Source"]
+    C["User Role Changed Event"] --> D["User Data Sync Service"]
+    D --> E["OPAL Server<br/>POST /data-config"]
+    E --> F["OPAL Client"]
+    F --> G["Data Provider API<br/>?tenant_id=X"]
     G --> F
-    H[GitHub Policy Webhook] --> I[Policy Management Service]
+    H["GitHub Policy Webhook"] --> I["Policy Management Service"]
     I --> E
-    J[Recovery Process] --> K[Tenant Discovery API]
-    K --> L[Full Data Export]
-    M[Manual Policy API] --> I
+    J["Recovery Process"] --> K["Tenant Discovery API"]
+    K --> L["Full Data Export"]
+    M["Manual Policy API"] --> I
 ```
 
 - **Data Provider API** (Flask, port 8110) – dostarcza dane ACL dla tenantów, odbiera webhooki GitHub, orkiestruje synchronizację danych
