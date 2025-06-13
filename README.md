@@ -58,14 +58,17 @@ Docelowy system ma obsługiwać:
 
 ```mermaid
 graph TD
-    A[GitHub Repo<br/>policies/] -- webhook --> B(Data Provider API)
-    B -- REST: /tenants, /acl, /webhook --> C(Integration Scripts)
-    C -- REST: /v1/data/tenant_data --> D(OPA Standalone)
-    B -- REST: /tenants, /acl --> E(Provisioning API)
-    E -- REST: /tenants --> B
-    D -- sync --> F(OPAL Client)
-    F -- sync --> G(OPAL Server)
-    G -- update --> D
+    A[Tenant Created Event] --> B[Tenant Provisioning Service]
+    C[User Role Changed Event] --> D[User Data Sync Service]
+    D --> E[OPAL Server POST /data-config]
+    E --> F[OPAL Client]
+    F --> G[Data Provider API?tenant_id=X]
+    G --> F
+    H[GitHub Policy Webhook] --> I[Policy Management Service]
+    I --> E
+    J[Recovery Process] --> K[Tenant Discovery API]
+    K --> L[Full Data Export]
+    M[Manual Policy API] --> I
 ```
 
 - **Data Provider API** (Flask, port 8110) – dostarcza dane ACL dla tenantów, odbiera webhooki GitHub, orkiestruje synchronizację danych
@@ -247,4 +250,4 @@ docker-compose logs opal-server
 docker-compose logs -f
 ```
 
---- 
+---
