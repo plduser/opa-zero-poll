@@ -94,18 +94,47 @@ graph TD
    docker-compose up --build -d
    ```
 
-3. **Sprawdź health check**
+3. **Sprawdź health check wszystkich serwisów**
    ```sh
-   curl http://localhost:8110/health
+   curl http://localhost:8110/health  # Data Provider API
+   curl http://localhost:8010/health  # Provisioning API
+   curl http://localhost:8181/health  # OPA Standalone
+   curl http://localhost:8000/health  # Integration Scripts
    ```
 
-4. **Dodaj webhook GitHub**
+4. **Dodaj tenant2 (wymagane do testów)**
+   ```sh
+   curl -X POST http://localhost:8010/provision-tenant \
+     -H "Content-Type: application/json" \
+     -d '{"tenant_id": "tenant2", "tenant_name": "Test Company 2", "status": "active"}'
+   ```
+
+5. **Wykonaj synchronizację danych**
+   ```sh
+   curl -X POST http://localhost:8110/sync/trigger
+   ```
+
+6. **Uruchom testy systemu**
+   ```sh
+   python test_full_system.py
+   ```
+
+7. **Dodaj webhook GitHub (opcjonalnie)**
    - Skonfiguruj webhook na adres: `http://localhost:8110/webhook/policy-update` (lub przez ngrok)
    - Ustaw `WEBHOOK_SECRET` w pliku `.env` lub w zmiennych środowiskowych Dockera
 
-5. **Testuj integrację**
-   - Zrób commit i push zmiany w polityce w katalogu `policies/`
-   - Sprawdź logi Data Provider API i OPA
+8. **Testuj autoryzację ręcznie**
+   ```sh
+   # Test: Admin może czytać
+   curl -X POST http://localhost:8181/v1/data/rbac/allow \
+     -H "Content-Type: application/json" \
+     -d '{"input": {"user": "user1", "role": "admin", "action": "read", "resource": "data", "tenant": "tenant1"}}'
+   
+   # Test: Viewer nie może pisać  
+   curl -X POST http://localhost:8181/v1/data/rbac/allow \
+     -H "Content-Type: application/json" \
+     -d '{"input": {"user": "user3", "role": "viewer", "action": "write", "resource": "data", "tenant": "tenant2"}}'
+   ```
 
 ---
 
@@ -114,6 +143,53 @@ graph TD
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – szczegóły architektury i diagramy
 - [docs/API.md](docs/API.md) – opis endpointów
 - [docs/WEBHOOKS.md](docs/WEBHOOKS.md) – integracja z GitHub
+
+## Testowanie systemu
+
+System zawiera automatyczne testy integracyjne w pliku `test_full_system.py`. Testy sprawdzają:
+
+### 🔍 **Faza 1: Health Check Serwisów**
+- Sprawdza czy wszystkie 4 główne serwisy odpowiadają prawidłowo
+- Weryfikuje endpointy `/health` każdego komponentu
+
+### 🔄 **Faza 2: Mechanizm Synchronizacji**  
+- Testuje endpoint `/sync/health` dla statusu synchronizacji
+- Sprawdza pełną synchronizację (`/sync/trigger`)
+- Testuje synchronizację specyficzną dla tenanta (`/sync/tenant/{id}`)
+
+### 📊 **Faza 3: Weryfikacja Danych w OPA**
+- Sprawdza czy dane obu tenantów zostały załadowane do OPA
+- Weryfikuje strukturę danych (użytkownicy, role, uprawnienia)
+
+### 🔐 **Faza 4: Testowanie Autoryzacji**
+Wykonuje 6 różnych scenariuszy autoryzacji:
+- ✅ Admin może czytać
+- ✅ Admin może pisać  
+- ✅ User może czytać własne dane
+- ✅ Viewer może czytać
+- ❌ Viewer nie może pisać
+- ❌ User nie może usuwać
+
+### Uruchomienie testów
+
+**Wymagania przed testami:**
+1. Wszystkie serwisy muszą być uruchomione (`docker-compose up -d`)
+2. Tenant2 musi być dodany (`curl -X POST http://localhost:8010/provision-tenant ...`)
+3. Synchronizacja musi być wykonana (`curl -X POST http://localhost:8110/sync/trigger`)
+
+**Komenda:**
+```bash
+python test_full_system.py
+```
+
+**Oczekiwany wynik:**
+```
+🎉 ALL TESTS PASSED! System is working correctly!
+✅ Services: All healthy
+✅ Synchronization: Working  
+✅ Data Loading: Working
+✅ Authorization: Working
+```
 
 ## Wymagania
 
