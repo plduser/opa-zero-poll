@@ -42,3 +42,5 @@ __pycache__/
 
 # Database files
 *.db
+portal-integration/
+.opal-keys/

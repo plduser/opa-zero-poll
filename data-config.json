@@ -1,24 +1,34 @@
 {
   "entries": [
     {
-      "url": "http://data-provider-api:8110/api/data",
+      "url": "http://simple-api-provider:8090/acl/tenant1",
+      "dst_path": "/acl/tenant1",
+      "topics": ["tenant_1_data"],
       "config": {
         "headers": {
           "Content-Type": "application/json"
         }
-      },
-      "topics": ["policy_data"],
-      "dst_path": "/data/provider"
+      }
     },
     {
-      "url": "http://provisioning-api-new:8010/api/tenants",
+      "url": "http://simple-api-provider:8090/acl/tenant2", 
+      "dst_path": "/acl/tenant2",
+      "topics": ["tenant_2_data"],
       "config": {
         "headers": {
           "Content-Type": "application/json"
         }
-      },
-      "topics": ["tenant_data"],
-      "dst_path": "/data/tenants"
+      }
+    },
+    {
+      "url": "http://simple-api-provider:8090/acl/tenant3",
+      "dst_path": "/acl/tenant3", 
+      "topics": ["tenant_3_data"],
+      "config": {
+        "headers": {
+          "Content-Type": "application/json"
+        }
+      }
     }
   ]
 } 
