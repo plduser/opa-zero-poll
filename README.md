@@ -2,6 +2,45 @@
 
 **OPA Zero Poll** to nowoczesny system zarządzania politykami RBAC i autoryzacją, oparty na OPA, z integracją OPAL. Architektura oparta o mikroserwisy, integrację przez REST i webhooki GitHub.
 
+## 🎯 Policy Management Portal - Nowa Aplikacja
+
+**Policy Management** to aplikacja webowa zintegrowana z portalem Symfonia, umożliwiająca:
+
+- 📊 **Monitorowanie statusu policy** na dashboardzie z kartami statystyk
+- 👁️ **Przeglądanie policy** przez intuicyjny interfejs (tylko odczyt)
+- 🔍 **Wyszukiwanie i filtrowanie** policy w czasie rzeczywistym
+- 🧪 **Testowanie policy z różnymi danymi wejściowymi** z automatycznym generatorem danych
+
+**Uwaga**: Policy są zarządzane przez system kontroli wersji (Git/GitHub), edycja odbywa się przez proces CI/CD.
+
+**Dostęp**: `http://localhost:3000/policy-management` (po uruchomieniu portalu Symfonia)
+
+**Szczegółowa dokumentacja**: [docs/POLICY_MANAGEMENT.md](docs/POLICY_MANAGEMENT.md)
+**Roadmap rozwoju**: [ROADMAP.md](ROADMAP.md)
+
+### 🛣️ **Roadmap Policy Management**
+
+**Faza 1.5** (priorytet krytyczny): **Struktura bazowych uprawnień - Model 2**
+- Implementacja hybrydowego modelu uprawnień (RBAC + REBAC-like)
+- Separacja ról aplikacyjnych od dostępu do firm
+- UI dla zarządzania zespołów i przypisań uprawnień
+
+**Faza 2** (priorytet wysoki): **Testowanie z prawdziwymi danymi systemu**
+- Automatyczne pobieranie danych użytkowników z systemu Symfonia
+- Testowanie policy z rzeczywistymi rolami i uprawnieniami
+- Historia testów i analiza wyników
+
+**Faza 3** (priorytet średni): **Integracja z Git/GitHub workflow**  
+- Code review process dla zmian w policy
+- Testy automatyczne w pipeline CI/CD
+- Historia zmian i mechanizm rollback
+- Kontrola zatwierdzeń
+
+**Faza 4** (priorytet niski): **Zaawansowane funkcjonalności**
+- Multi-environment support (dev/staging/prod)
+- Integracje z Slack/Teams/Jira
+- A/B testing policy
+
 ---
 
 ## Założenia projektu (Proof of Concept)
@@ -19,12 +58,14 @@ Docelowy system ma obsługiwać:
 
 ### Rola komponentów w architekturze docelowej
 
-#### 🏢 **Data Provider API** (Port 8110)
-**Cel**: Symuluje **Enterprise Data Source** z diagramu docelowego
+#### 🏢 **Data Provider API** (Port 8110) - **KLUCZOWY KOMPONENT**
+**Cel**: Symuluje **Enterprise Data Source** z diagramu docelowego i implementuje **OPAL External Data Sources**
 - Dostarcza dane użytkowników, ról i uprawnień dla każdego tenanta
-- Odbiera webhooki GitHub o zmianach w politykach i przekierowuje je do OPAL
+- **Implementuje OPAL External Data Sources API** - zwraca per-tenant DataSourceConfig na podstawie JWT claims
+- **Obsługuje HTTP 307 redirects** z JWT token authentication dla OPAL Client requests
+- Odbiera webhooki GitHub o zmianach w politykach i przekierowuje je do OPAL Server
 - Orkiestruje synchronizację danych między systemami przez API Integration Scripts
-- W docelowym systemie zostanie zastąpiony przez prawdziwe systemy HR/ERP/CRM
+- W docelowym systemie zostanie zastąpiony przez prawdziwe systemy HR/ERP/CRM z OPAL integration
 
 #### ⚙️ **Provisioning API** (Port 8010) 
 **Cel**: Symuluje **Tenant Management System** z diagramu docelowego
@@ -35,19 +76,20 @@ Docelowy system ma obsługiwać:
 **Cel**: Symuluje **legacy data processing** w obecnym POC
 - Orkiestruje przepływ danych między systemami (obecna implementacja)
 - Zapewnia transformację danych do formatu wymaganego przez OPA
-- W docelowym systemie zostanie zastąpiony przez event-driven data sources
+- W docelowym systemie zostanie zastąpiony przez **OPAL External Data Sources**
 
-#### 🛡️ **OPA + OPAL**
+#### 🛡️ **OPA + OPAL** - **SERCE SYSTEMU**
 **Cel**: Stanowią rdzeń **Policy Decision Point (PDP)** z diagramu docelowego
 - **OPA Standalone**: Silnik decyzyjny autoryzacji
-- **OPAL Server**: Zarządzanie politykami i ich dystrybucja
+- **OPAL Server**: Zarządzanie politykami i ich dystrybucja przez PubSub channels
 - **OPAL Client**: Synchronizacja polityk w czasie rzeczywistym
+- **OPAL External Data Sources**: Dynamiczne konfiguracje per-tenant przez HTTP redirects z JWT authentication
 
 ### 📋 Co dowodzi ten POC?
 
 1. **✅ Integracja mikroserwisów** - wszystkie komponenty komunikują się przez REST API
 2. **✅ Real-time updates** - zmiany w politykach są automatycznie propagowane przez OPAL
-3. **✅ Tenant isolation** - każdy tenant ma odrębne dane źródłowe (topiki w data-sources)  
+3. **✅ Tenant isolation** - każdy tenant ma odrębne dane źródłowe przez OPAL External Data Sources z JWT claims  
 4. **✅ GitHub-based policy management** - polityki są zarządzane jako kod
 5. **✅ Health monitoring** - każdy komponent eksponuje endpointy health check
 6. **✅ Skalowalna architektura** - komponenty mogą być niezależnie skalowane
@@ -59,25 +101,26 @@ Docelowy system ma obsługiwać:
 ```mermaid
 graph TD
     A["Tenant Created Event"] --> B["Tenant Provisioning Service"]
-    B --> E["OPAL Server<br/>Register Data Source"]
+    B --> E["OPAL Server<br/>External Data Sources Config"]
     C["User Role Changed Event"] --> D["User Data Sync Service"]
-    D --> E["OPAL Server<br/>POST /data-config"]
-    E --> F["OPAL Client"]
-    F --> G["Data Provider API<br/>?tenant_id=X"]
-    G --> F
-    H["GitHub Policy Webhook"] --> I["Policy Management Service"]
-    I --> E
-    J["Recovery Process"] --> K["Tenant Discovery API"]
-    K --> L["Full Data Export"]
-    M["Manual Policy API"] --> I
+    D --> E["OPAL Server<br/>PubSub Channels"]
+    E --> F["OPAL Client<br/>JWT with tenant_id"]
+    F --> G["Data Provider API<br/>HTTP 307 Redirect + JWT"]
+    G --> H["Per-tenant DataSourceConfig"]
+    H --> F
+    I["GitHub Policy Webhook"] --> J["Policy Management Service"]
+    J --> E
+    K["Recovery Process"] --> L["Tenant Discovery API"]
+    L --> M["Full Data Export via OPAL External Sources"]
+    N["Manual Policy API"] --> J
 ```
 
-- **Data Provider API** (Flask, port 8110) – dostarcza dane ACL dla tenantów, odbiera webhooki GitHub, orkiestruje synchronizację danych
-- **Provisioning API** (Flask, port 8010) – zarządzanie tenantami
+- **Data Provider API** (Flask, port 8110) – implementuje OPAL External Data Sources, dostarcza per-tenant DataSourceConfig, odbiera webhooki GitHub
+- **Provisioning API** (Flask, port 8010) – zarządzanie tenantami i konfiguracja OPAL External Sources
 - **OPA Standalone** (port 8181) – silnik autoryzacji z politykami Rego
-- **Integration Scripts** – synchronizacja danych i polityk, obsługa webhooków
-- **OPAL Client** – synchronizuje dane z OPAL Server
-- **OPAL Server** – zarządza politykami i synchronizacją z OPA
+- **Integration Scripts** – synchronizacja danych i polityk (legacy, zastąpione przez OPAL External Sources)
+- **OPAL Client** – synchronizuje dane z OPAL Server przez JWT authentication i HTTP redirects
+- **OPAL Server** – zarządza politykami i External Data Sources configuration
 
 ---
 
@@ -153,6 +196,7 @@ graph TD
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – szczegóły architektury i diagramy
 - [docs/API.md](docs/API.md) – opis endpointów
 - [docs/WEBHOOKS.md](docs/WEBHOOKS.md) – integracja z GitHub
+- [docs/POLICY_MANAGEMENT.md](docs/POLICY_MANAGEMENT.md) – **dokumentacja aplikacji Policy Management w portalu Symfonia**
 
 ## Testowanie systemu
 

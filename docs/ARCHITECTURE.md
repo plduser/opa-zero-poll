@@ -1,7 +1,7 @@
 # ARCHITEKTURA SYSTEMU OPA ZERO POLL
 
 ## Cel projektu
-Krótki opis celu systemu, np. "System do zarządzania politykami RBAC i autoryzacją oparty na OPA, z integracją OPAL."
+System do zarządzania politykami RBAC i autoryzacją oparty na OPA, z integracją OPAL External Data Sources. **Serce systemu** stanowi mechanizm per-tenant data sources przez HTTP redirects z JWT authentication.
 
 ---
 
@@ -10,68 +10,175 @@ Krótki opis celu systemu, np. "System do zarządzania politykami RBAC i autoryz
 ```mermaid
 graph TD
     A[GitHub Repo<br/>policies/] -- webhook --> B(Data Provider API)
-    B -- REST: /tenants, /acl, /webhook --> C(Integration Scripts)
-    C -- REST: /v1/data/tenant_data --> D(OPA Standalone)
-    B -- REST: /tenants, /acl --> E(Provisioning API)
-    E -- REST: /tenants --> B
-    C -- health check --> B
-    C -- health check --> D
-    C -- health check --> E
-    D -- sync --> F(OPAL Client)
-    F -- sync --> G(OPAL Server)
-    G -- update --> D
+    B -- "OPAL External Sources<br/>HTTP 307 + JWT" --> C(OPAL Client)
+    C -- "JWT with tenant_id" --> B
+    B -- "Per-tenant DataSourceConfig" --> C
+    C -- "PubSub Channels" --> D(OPAL Server)
+    D -- "Policy Updates" --> C
+    C -- "Data + Policies" --> E(OPA Standalone)
+    B -- REST: /tenants, /acl --> F(Provisioning API)
+    F -- "Register External Sources" --> D
+    G(Integration Scripts) -- "Legacy sync (deprecated)" --> E
+    H[Policy Management Portal] -- "View/Test Policies" --> D
 ```
 
 ---
 
 ## Komponenty
 
-### Data Provider API
+### 🏢 Data Provider API - **KLUCZOWY KOMPONENT**
 - Flask, port 8110
-- Dostarcza dane ACL dla tenantów
-- Odbiera webhooki GitHub
+- **Implementuje OPAL External Data Sources API**
+- **Obsługuje HTTP 307 redirects z JWT token authentication**
+- **Zwraca per-tenant DataSourceConfig na podstawie JWT claims**
+- Odbiera webhooki GitHub i przekierowuje do OPAL Server
+- Orkiestruje synchronizację danych między systemami
 
-### Provisioning API
+### ⚙️ Provisioning API
 - Flask, port 8010
-- Zarządzanie tenantami
+- Zarządzanie tenantami i konfiguracja OPAL External Sources
+- Rejestruje nowe data sources w OPAL Server
 
-### OPA Standalone
+### 🛡️ OPA Standalone - **SILNIK DECYZYJNY**
 - Port 8181
 - Silnik autoryzacji z politykami Rego
+- Otrzymuje dane i polityki od OPAL Client
 
-### Integration Scripts
-- Python
-- Synchronizacja danych i polityk, obsługa webhooków
+### 🔄 Integration Scripts (Legacy)
+- Python, port 8000
+- **DEPRECATED**: Zastąpione przez OPAL External Data Sources
+- Synchronizacja danych i polityk (stara implementacja)
 
-### OPAL Client
-- Synchronizuje dane z OPAL Server
+### 📡 OPAL Client - **SERCE SYNCHRONIZACJI**
+- **Implementuje OPAL External Data Sources flow**
+- **Wysyła JWT z tenant_id do Data Provider API**
+- **Odbiera HTTP 307 redirects i per-tenant DataSourceConfig**
+- Synchronizuje dane z OPAL Server przez PubSub channels
 
-### OPAL Server
-- Zarządza politykami i synchronizacją z OPA
+### 🎛️ OPAL Server - **CENTRUM ZARZĄDZANIA**
+- Zarządza politykami i External Data Sources configuration
+- **Obsługuje PubSub channels (nie Kafka topics!)**
+- Klonuje polityki z GitHub repository
+- Publikuje aktualizacje do OPAL Client
+
+### 🌐 Policy Management Portal
+- Next.js aplikacja zintegrowana z portalem Symfonia
+- Przeglądanie, testowanie i monitorowanie polityk
+- **NIE zawiera edycji** - polityki zarządzane przez Git/GitHub
 
 ---
 
-## Przepływ danych
-1. Zmiana w repozytorium GitHub (policies/) wywołuje webhook
-2. Data Provider API odbiera webhook, wykrywa zmiany w politykach
-3. Integration Scripts synchronizuje dane i ładuje je do OPA
-4. OPA Standalone udostępnia decyzje autoryzacyjne przez REST
-5. OPAL Client synchronizuje dane z OPAL Server
-6. OPAL Server zarządza aktualizacjami polityk
+## Przepływ danych - **MECHANIZM OPAL EXTERNAL DATA SOURCES**
+
+### 1. **Dodanie nowego tenanta:**
+```
+Provisioning API → OPAL Server → External Data Sources Config
+                                ↓
+                         OPAL Client (z OPAL_DATA_CONFIG_SOURCES)
+```
+
+### 2. **Pobieranie danych per-tenant:**
+```
+OPAL Client → OPAL Server → HTTP 307 Redirect + JWT
+                           ↓
+            Data Provider API (JWT validation + tenant_id extraction)
+                           ↓
+            Per-tenant DataSourceConfig Response
+                           ↓
+            OPAL Client → OPA (data update)
+```
+
+### 3. **Aktualizacja polityk:**
+```
+GitHub Webhook → Data Provider API → OPAL Server
+                                   ↓
+                            PubSub Channels
+                                   ↓
+                            OPAL Client → OPA
+```
+
+### 4. **Kluczowe mechanizmy:**
+- **JWT Authentication**: tenant_id w custom claims
+- **HTTP 307 Redirects**: z token query parameter
+- **Per-tenant DataSourceConfig**: dynamiczne konfiguracje
+- **PubSub Channels**: real-time updates (nie Kafka!)
+- **External Data Sources**: `OPAL_DATA_CONFIG_SOURCES` configuration
 
 ---
 
 ## Uzasadnienia techniczne
-- Integracja z OPAL: lepsza synchronizacja polityk, automatyzacja
-- REST i webhooki: łatwa integracja, automatyzacja
-- Mikroserwisy: łatwe testowanie, skalowanie
+
+### **OPAL External Data Sources vs Kafka**
+- ✅ **HTTP redirects**: Prostsze, bardziej standardowe niż Kafka topics
+- ✅ **JWT authentication**: Bezpieczne, skalowalne, standardowe
+- ✅ **Per-tenant isolation**: Automatyczne przez JWT claims
+- ✅ **OPAL native**: Wykorzystuje wbudowane mechanizmy OPAL
+- ❌ **Kafka**: Niepotrzebna złożoność dla tego use case
+
+### **Architektura mikroserwisów**
+- **Data Provider API**: Centralne źródło danych enterprise
+- **Provisioning API**: Zarządzanie cyklem życia tenantów
+- **OPAL**: Zarządzanie politykami i synchronizacja
+- **OPA**: Silnik decyzyjny autoryzacji
+
+### **Real-time updates**
+- **PubSub channels**: Natywny mechanizm OPAL
+- **External Data Sources**: Dynamiczne konfiguracje per-tenant
+- **Zero-polling**: Brak aktywnego odpytywania
 
 ---
 
-## Diagramy (opcjonalnie)
-- Możesz dodać kolejne diagramy (np. sequence, flow) w mermaid
+## Konfiguracja OPAL External Data Sources
+
+### **OPAL Client Environment:**
+```bash
+OPAL_DATA_CONFIG_SOURCES=http://data-provider-api:8110/external-data-source
+OPAL_SERVER_URL=http://opal-server:7002
+```
+
+### **Data Provider API Endpoints:**
+```
+GET /external-data-source → HTTP 307 + JWT token
+GET /data-source-config?token=<jwt> → Per-tenant DataSourceConfig
+```
+
+### **JWT Structure:**
+```json
+{
+  "tenant_id": "tenant125",
+  "iat": 1640995200,
+  "exp": 1640998800
+}
+```
+
+### **DataSourceConfig Response:**
+```json
+{
+  "entries": [
+    {
+      "url": "http://data-provider-api:8110/access/tenant125",
+      "config": {
+        "headers": {"Authorization": "Bearer <jwt>"}
+      },
+      "save_method": "PUT",
+      "dst_path": "tenant_data/tenant125"
+    }
+  ]
+}
+```
 
 ---
 
-## FAQ / Notatki
-- Tu możesz dodać odpowiedzi na najczęstsze pytania lub decyzje projektowe 
+## FAQ / Decyzje projektowe
+
+### **Q: Dlaczego OPAL External Data Sources zamiast Kafka?**
+A: OPAL External Data Sources to natywny mechanizm OPAL, prostszy w implementacji i maintenance. Kafka byłby over-engineering dla tego use case.
+
+### **Q: Jak działa tenant isolation?**
+A: Przez JWT claims z tenant_id. OPAL Client otrzymuje token, Data Provider API go waliduje i zwraca odpowiednie dane dla tenanta.
+
+### **Q: Co się dzieje przy dodaniu nowego tenanta?**
+A: Provisioning API rejestruje External Data Source w OPAL Server, który automatycznie konfiguruje OPAL Client do pobierania danych dla nowego tenanta.
+
+### **Q: Czy Integration Scripts są nadal potrzebne?**
+A: W docelowej architekturze NIE. Są zastąpione przez OPAL External Data Sources. Pozostają tylko dla legacy compatibility w POC. 
