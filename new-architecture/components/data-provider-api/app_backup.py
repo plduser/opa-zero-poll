@@ -20,18 +20,6 @@ from flask_cors import CORS
 import jwt
 from cryptography.hazmat.primitives import serialization
 
-# Import DAO for database integration
-try:
-    import sys
-    sys.path.append('/app/shared')
-    from database.dao import TenantDAO, UserDAO, UserProfileDAO
-    from database.connection import init_database
-    DATABASE_AVAILABLE = True
-    logger.info("✅ Database DAO imported successfully")
-except ImportError as e:
-    DATABASE_AVAILABLE = False
-    logger.warning(f"⚠️ Database DAO not available: {e}")
-
 # Import Model 2 components
 try:
     from model2_validator import Model2Validator
@@ -46,14 +34,6 @@ try:
     OPAL_ENDPOINTS_AVAILABLE = True
 except ImportError:
     OPAL_ENDPOINTS_AVAILABLE = False
-
-
-# Import Unified Model
-try:
-    from unified_model import get_unified_tenant_data
-    UNIFIED_MODEL_AVAILABLE = True
-except ImportError:
-    UNIFIED_MODEL_AVAILABLE = False
 
 # Konfiguracja logowania
 logging.basicConfig(
@@ -116,222 +96,44 @@ except Exception as e:
     logger.error(f"❌ Error loading Model 2: {e}")
     MODEL2_AVAILABLE = False
 
-# Statyczne dane testowe ACL (Enhanced Model 1)
+# Statyczne dane testowe ACL (Model 1)
 ACL_DATA = {
     "tenant1": {
         "tenant_id": "tenant1",
-        "tenant_name": "Test Company 1",
+        "tenant_name": "Test Company 1", 
         "users": [
             {
                 "user_id": "user1",
                 "username": "admin_user",
-                "roles": {
-                    "fk": [
-                        "fk_admin"
-                    ],
-                    "hr": [
-                        "hr_admin"
-                    ],
-                    "crm": [
-                        "crm_admin"
-                    ]
-                },
-                "permissions": {
-                    "fk": [
-                        "view_entry",
-                        "edit_entry",
-                        "delete_entry",
-                        "manage_accounts",
-                        "generate_reports",
-                        "approve_entries"
-                    ],
-                    "hr": [
-                        "view_profile",
-                        "edit_profile",
-                        "delete_profile",
-                        "manage_contracts",
-                        "manage_salaries",
-                        "generate_hr_reports"
-                    ],
-                    "crm": [
-                        "view_client",
-                        "edit_client",
-                        "delete_client",
-                        "manage_deals",
-                        "generate_crm_reports",
-                        "manage_pipelines"
-                    ]
-                },
-                "companies": [
-                    "company1",
-                    "company2"
-                ]
+                "roles": ["admin"],
+                "permissions": ["read", "write", "delete", "manage_users"]
             },
             {
-                "user_id": "user2",
+                "user_id": "user2", 
                 "username": "regular_user",
-                "roles": {
-                    "fk": [
-                        "fk_editor"
-                    ],
-                    "hr": [
-                        "hr_viewer"
-                    ]
-                },
-                "permissions": {
-                    "fk": [
-                        "view_entry",
-                        "edit_entry",
-                        "generate_reports"
-                    ],
-                    "hr": [
-                        "view_profile",
-                        "view_contract"
-                    ]
-                },
-                "companies": [
-                    "company1"
-                ]
-            },
-            {
-                "user_id": "user3",
-                "username": "viewer_user",
-                "roles": {
-                    "fk": [
-                        "fk_viewer"
-                    ]
-                },
-                "permissions": {
-                    "fk": [
-                        "view_entry",
-                        "generate_basic_reports"
-                    ]
-                },
-                "companies": [
-                    "company2"
-                ]
+                "roles": ["user"],
+                "permissions": ["read", "write"]
             }
         ],
         "roles": {
-            "fk": {
-                "fk_admin": [
-                    "view_entry",
-                    "edit_entry",
-                    "delete_entry",
-                    "manage_accounts",
-                    "generate_reports",
-                    "approve_entries",
-                    "manage_chart_of_accounts"
-                ],
-                "fk_editor": [
-                    "view_entry",
-                    "edit_entry",
-                    "generate_reports",
-                    "create_invoices",
-                    "edit_invoices"
-                ],
-                "fk_viewer": [
-                    "view_entry",
-                    "generate_basic_reports",
-                    "view_invoices"
-                ]
-            },
-            "hr": {
-                "hr_admin": [
-                    "view_profile",
-                    "edit_profile",
-                    "delete_profile",
-                    "manage_contracts",
-                    "manage_salaries",
-                    "generate_hr_reports",
-                    "manage_vacation_requests"
-                ],
-                "hr_editor": [
-                    "view_profile",
-                    "edit_profile",
-                    "edit_contract",
-                    "generate_hr_reports",
-                    "manage_vacation_requests"
-                ],
-                "hr_viewer": [
-                    "view_profile",
-                    "view_contract",
-                    "view_organizational_structure"
-                ]
-            },
-            "crm": {
-                "crm_admin": [
-                    "view_client",
-                    "edit_client",
-                    "delete_client",
-                    "manage_deals",
-                    "generate_crm_reports",
-                    "manage_pipelines",
-                    "access_analytics"
-                ],
-                "crm_editor": [
-                    "view_client",
-                    "edit_client",
-                    "manage_deals",
-                    "generate_crm_reports",
-                    "manage_activities"
-                ],
-                "crm_viewer": [
-                    "view_client",
-                    "view_deals",
-                    "view_activities",
-                    "generate_basic_crm_reports"
-                ]
-            }
-        },
-        "companies": [
-            "company1",
-            "company2"
-        ]
+            "admin": ["read", "write", "delete", "manage_users", "manage_tenant"],
+            "user": ["read", "write"]
+        }
     },
     "tenant2": {
         "tenant_id": "tenant2",
         "tenant_name": "Test Company 2",
         "users": [
             {
-                "user_id": "user4",
-                "username": "hr_specialist",
-                "roles": {
-                    "hr": [
-                        "hr_editor"
-                    ]
-                },
-                "permissions": {
-                    "hr": [
-                        "view_profile",
-                        "edit_profile",
-                        "edit_contract",
-                        "generate_hr_reports"
-                    ]
-                },
-                "companies": [
-                    "company3"
-                ]
+                "user_id": "user3",
+                "username": "viewer_user", 
+                "roles": ["viewer"],
+                "permissions": ["read"]
             }
         ],
         "roles": {
-            "hr": {
-                "hr_editor": [
-                    "view_profile",
-                    "edit_profile",
-                    "edit_contract",
-                    "generate_hr_reports",
-                    "manage_vacation_requests"
-                ],
-                "hr_viewer": [
-                    "view_profile",
-                    "view_contract"
-                ]
-            }
-        },
-        "companies": [
-            "company3"
-        ]
+            "viewer": ["read"]
+        }
     }
 }
 

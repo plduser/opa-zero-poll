@@ -1,11 +1,13 @@
 """
-Provisioning API - Standalone Service
-Zarządza rejestracją, listowaniem i usuwaniem tenantów w systemie OPA Zero Poll.
+Provisioning API - PostgreSQL Service
+Zarządza kompletną rejestracją tenantów w systemie OPA Zero Poll z automatycznym tworzeniem
+administratora i uprawień Portal.
 """
 
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import logging
 import datetime
 import os
@@ -20,38 +22,34 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# Konfiguracja bazy danych
-DATABASE_PATH = os.environ.get("DATABASE_PATH", "tenants.db")
+# Konfiguracja PostgreSQL (używając zmiennych z docker-compose)
+DB_CONFIG = {
+    'host': os.environ.get('DB_HOST', 'postgres-db'),
+    'port': int(os.environ.get('DB_PORT', 5432)),
+    'database': os.environ.get('DB_NAME', 'opa_zero_poll'),
+    'user': os.environ.get('DB_USER', 'opa_user'),
+    'password': os.environ.get('DB_PASSWORD', 'opa_password')
+}
 
 # Konfiguracja OPAL Server
 OPAL_SERVER_URL = os.environ.get("OPAL_SERVER_URL", "http://opal-server:7002")
 DATA_PROVIDER_API_URL = os.environ.get("DATA_PROVIDER_API_URL", "http://data-provider-api:8110")
 
-def init_database():
-    """Inicjalizuje bazę danych SQLite z tabelą tenantów"""
-    with sqlite3.connect(DATABASE_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS tenants (
-                tenant_id TEXT PRIMARY KEY,
-                tenant_name TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'active',
-                metadata TEXT
-            )
-        """)
-        conn.commit()
-        logger.info("Database initialized successfully")
-
 @contextmanager
 def get_db_connection():
-    """Context manager dla połączeń z bazą danych"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    conn.row_factory = sqlite3.Row
+    """Context manager dla połączeń z PostgreSQL"""
+    conn = None
     try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        conn.autocommit = False
         yield conn
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        raise e
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 @app.before_request
 def log_request_info():
@@ -65,7 +63,6 @@ def health_check():
     """Endpoint zdrowia serwisu"""
     logger.info("Health check requested")
     
-    # Sprawdź połączenie z bazą danych
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
@@ -76,8 +73,8 @@ def health_check():
             "status": "healthy",
             "service": "provisioning-api",
             "timestamp": datetime.datetime.utcnow().isoformat(),
-            "version": "1.0.0",
-            "database": "connected",
+            "version": "2.0.0-postgresql",
+            "database": "PostgreSQL connected",
             "tenant_count": tenant_count
         }), 200
         
@@ -87,24 +84,26 @@ def health_check():
             "status": "unhealthy",
             "service": "provisioning-api",
             "timestamp": datetime.datetime.utcnow().isoformat(),
-            "version": "1.0.0",
-            "database": "error",
+            "version": "2.0.0-postgresql",
+            "database": "PostgreSQL error",
             "error": str(e)
         }), 500
 
 @app.route("/provision-tenant", methods=["POST"])
 def provision_tenant():
     """
-    Rejestruje nowego tenanta w systemie
+    Tworzy kompletną strukturę tenanta w systemie z automatycznymi uprawnieniami administratora
     
     Expected JSON:
     {
         "tenant_id": "tenant123",
         "tenant_name": "Company Name",
+        "admin_email": "admin@company.com",
+        "admin_name": "Jan Kowalski",
         "metadata": {"key": "value"} (optional)
     }
     """
-    logger.info("Tenant provisioning requested")
+    logger.info("Complete tenant provisioning requested")
     
     if not request.is_json:
         return jsonify({"error": "Content-Type must be application/json"}), 400
@@ -112,23 +111,23 @@ def provision_tenant():
     data = request.json
     
     # Walidacja danych wejściowych
-    if not data.get("tenant_id"):
-        return jsonify({"error": "tenant_id is required"}), 400
-    
-    if not data.get("tenant_name"):
-        return jsonify({"error": "tenant_name is required"}), 400
+    required_fields = ["tenant_id", "tenant_name", "admin_email", "admin_name"]
+    for field in required_fields:
+        if not data.get(field):
+            return jsonify({"error": f"{field} is required"}), 400
     
     tenant_id = data["tenant_id"]
     tenant_name = data["tenant_name"]
+    admin_email = data["admin_email"]
+    admin_name = data["admin_name"]
     metadata = data.get("metadata", {})
-    created_at = datetime.datetime.utcnow().isoformat()
     
     try:
         with get_db_connection() as conn:
             cursor = conn.cursor()
             
             # Sprawdź czy tenant już istnieje
-            cursor.execute("SELECT tenant_id FROM tenants WHERE tenant_id = ?", (tenant_id,))
+            cursor.execute("SELECT tenant_id FROM tenants WHERE tenant_id = %s", (tenant_id,))
             if cursor.fetchone():
                 logger.warning(f"Tenant {tenant_id} already exists")
                 return jsonify({
@@ -136,28 +135,33 @@ def provision_tenant():
                     "tenant_id": tenant_id
                 }), 409
             
-            # Dodaj nowego tenanta
-            cursor.execute("""
-                INSERT INTO tenants (tenant_id, tenant_name, created_at, status, metadata)
-                VALUES (?, ?, ?, ?, ?)
-            """, (tenant_id, tenant_name, created_at, "active", json.dumps(metadata)))
+            # Wywołaj funkcję tworzenia kompletnej struktury
+            result = create_complete_tenant_structure(cursor, tenant_id, tenant_name, admin_email, admin_name, metadata)
+            
+            if not result["success"]:
+                return jsonify({
+                    "error": "Failed to create complete tenant structure",
+                    "details": result["error"]
+                }), 500
             
             conn.commit()
-            
-            logger.info(f"Tenant {tenant_id} provisioned successfully")
+            logger.info(f"Complete tenant structure created for {tenant_id}")
             
             # Publikuj aktualizację do OPAL Server
             publish_tenant_update(tenant_id)
             
             return jsonify({
-                "message": "Tenant provisioned successfully",
+                "message": "Complete tenant structure provisioned successfully",
                 "tenant": {
                     "tenant_id": tenant_id,
                     "tenant_name": tenant_name,
-                    "created_at": created_at,
+                    "admin_email": admin_email,
+                    "admin_name": admin_name,
+                    "created_at": datetime.datetime.utcnow().isoformat(),
                     "status": "active",
                     "metadata": metadata
-                }
+                },
+                "structure": result["structure"]
             }), 201
             
     except Exception as e:
@@ -167,40 +171,194 @@ def provision_tenant():
             "details": str(e)
         }), 500
 
+def create_complete_tenant_structure(cursor, tenant_id, tenant_name, admin_email, admin_name, metadata=None):
+    """
+    Tworzy kompletną strukturę tenanta w PostgreSQL:
+    - Tenant
+    - Pierwsza firma
+    - Użytkownik administrator
+    - Aplikacja Portal (jeśli nie istnieje)
+    - Rola Portal Administrator z automatycznymi uprawnieniami
+    - Przypisanie roli do administratora
+    """
+    try:
+        if metadata is None:
+            metadata = {}
+        
+        # 1. Dodaj tenant do głównej tabeli
+        cursor.execute("""
+            INSERT INTO tenants (tenant_id, tenant_name, description, status, metadata, created_at, updated_at)
+            VALUES (%s, %s, %s, 'active', %s, NOW(), NOW())
+        """, (tenant_id, tenant_name, f"Tenant utworzony automatycznie dla {admin_name}", json.dumps(metadata)))
+        
+        # 2. Dodaj pierwszą firmę
+        company_id = f"company_{tenant_id}"
+        cursor.execute("""
+            INSERT INTO companies (company_id, tenant_id, company_name, company_code, description, status, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, 'active', NOW(), NOW())
+        """, (company_id, tenant_id, tenant_name, tenant_id.upper(), f"Główna firma dla {tenant_name}"))
+        
+        # 3. Dodaj użytkownika administratora
+        user_id = f"admin_{tenant_id}"
+        username = admin_email  # Użyj pełnego email jako username
+        cursor.execute("""
+            INSERT INTO users (user_id, username, email, full_name, status, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, 'active', NOW(), NOW())
+        """, (user_id, username, admin_email, admin_name))
+        
+        # 4. Dodaj dostęp użytkownika do firmy
+        cursor.execute("""
+            INSERT INTO user_access (user_id, company_id, tenant_id, access_type, granted_at, granted_by)
+            VALUES (%s, %s, %s, 'direct', NOW(), 'system')
+        """, (user_id, company_id, tenant_id))
+        
+        # 5. Sprawdź czy aplikacja Portal istnieje
+        cursor.execute("SELECT app_id FROM applications WHERE app_id = 'portal'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                INSERT INTO applications (app_id, app_name, description, status, created_at)
+                VALUES ('portal', 'Portal', 'Główna aplikacja portalu zarządzania', 'active', NOW())
+            """)
+        
+        # 6. Sprawdź czy rola Portal Administrator istnieje
+        cursor.execute("SELECT role_id FROM roles WHERE role_name = 'Portal Administrator' AND app_id = 'portal'")
+        portal_admin_role = cursor.fetchone()
+        if not portal_admin_role:
+            cursor.execute("""
+                INSERT INTO roles (role_id, role_name, app_id, description, created_at)
+                VALUES (uuid_generate_v4(), 'Portal Administrator', 'portal', 'Administrator portalu z pełnymi uprawnieniami', NOW())
+                RETURNING role_id
+            """)
+            portal_admin_role = cursor.fetchone()
+        
+        role_id = portal_admin_role[0]
+        
+        # 7. Dodaj rolę administratora do użytkownika
+        cursor.execute("""
+            INSERT INTO user_roles (user_id, role_id, tenant_id, assigned_at, assigned_by)
+            VALUES (%s, %s, %s, NOW(), 'system')
+        """, (user_id, role_id, tenant_id))
+        
+        # 8. Sprawdź czy uprawnienia Portal Administrator istnieją i przypisz je
+        portal_permissions = [
+            ('manage_users', 'Zarządzanie użytkownikami'),
+            ('manage_companies', 'Zarządzanie firmami'),
+            ('manage_roles', 'Zarządzanie rolami'),
+            ('manage_permissions', 'Zarządzanie uprawnieniami'),
+            ('view_analytics', 'Przeglądanie analityki'),
+            ('system_admin', 'Administracja systemu')
+        ]
+        
+        created_permissions = []
+        for perm_name, perm_desc in portal_permissions:
+            # Dodaj uprawnienie jeśli nie istnieje
+            cursor.execute("""
+                INSERT INTO permissions (permission_id, permission_name, app_id, description, created_at)
+                VALUES (uuid_generate_v4(), %s, 'portal', %s, NOW())
+                ON CONFLICT (permission_name, app_id) DO NOTHING
+            """, (perm_name, perm_desc))
+            
+            # Pobierz ID uprawnienia
+            cursor.execute("""
+                SELECT permission_id FROM permissions 
+                WHERE permission_name = %s AND app_id = 'portal'
+            """, (perm_name,))
+            permission_id = cursor.fetchone()[0]
+            
+            # Przypisz uprawnienie do roli
+            cursor.execute("""
+                INSERT INTO role_permissions (role_id, permission_id)
+                VALUES (%s, %s)
+                ON CONFLICT (role_id, permission_id) DO NOTHING
+            """, (role_id, permission_id))
+            
+            created_permissions.append(perm_name)
+        
+        # Zwróć informacje o utworzonej strukturze
+        structure = {
+            "tenant_id": tenant_id,
+            "tenant_name": tenant_name,
+            "company_id": company_id,
+            "admin_user_id": user_id,
+            "admin_username": username,
+            "admin_email": admin_email,
+            "admin_name": admin_name,
+            "role_id": str(role_id),
+            "role_name": "Portal Administrator",
+            "permissions_count": len(created_permissions),
+            "permissions": created_permissions
+        }
+        
+        logger.info(f"✅ Complete tenant structure created:")
+        logger.info(f"   - Tenant: {tenant_name} ({tenant_id})")
+        logger.info(f"   - Company: {company_id}")
+        logger.info(f"   - Administrator: {admin_name} ({admin_email})")
+        logger.info(f"   - Role: Portal Administrator with {len(created_permissions)} permissions")
+        
+        return {"success": True, "structure": structure}
+        
+    except Exception as e:
+        logger.error(f"❌ Error creating complete tenant structure: {e}")
+        return {"success": False, "error": str(e)}
+
 @app.route("/tenants", methods=["GET"])
 def list_tenants():
-    """Zwraca listę wszystkich tenantów"""
+    """Zwraca listę wszystkich tenantów z PostgreSQL"""
     logger.info("Tenants list requested")
     
     status_filter = request.args.get('status')
     
     try:
         with get_db_connection() as conn:
-            cursor = conn.cursor()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
             if status_filter:
-                cursor.execute("SELECT * FROM tenants WHERE status = ? ORDER BY created_at DESC", (status_filter,))
+                cursor.execute("""
+                    SELECT t.*, 
+                           COUNT(c.company_id) as company_count,
+                           COUNT(u.user_id) as user_count
+                    FROM tenants t
+                    LEFT JOIN companies c ON t.tenant_id = c.tenant_id
+                    LEFT JOIN user_access ua ON t.tenant_id = ua.tenant_id
+                    LEFT JOIN users u ON ua.user_id = u.user_id
+                    WHERE t.status = %s
+                    GROUP BY t.tenant_id, t.tenant_name, t.description, t.status, t.metadata, t.created_at, t.updated_at
+                    ORDER BY t.created_at DESC
+                """, (status_filter,))
             else:
-                cursor.execute("SELECT * FROM tenants ORDER BY created_at DESC")
+                cursor.execute("""
+                    SELECT t.*, 
+                           COUNT(c.company_id) as company_count,
+                           COUNT(u.user_id) as user_count
+                    FROM tenants t
+                    LEFT JOIN companies c ON t.tenant_id = c.tenant_id
+                    LEFT JOIN user_access ua ON t.tenant_id = ua.tenant_id
+                    LEFT JOIN users u ON ua.user_id = u.user_id
+                    GROUP BY t.tenant_id, t.tenant_name, t.description, t.status, t.metadata, t.created_at, t.updated_at
+                    ORDER BY t.created_at DESC
+                """)
             
             rows = cursor.fetchall()
             
             tenants = []
             for row in rows:
-                tenant = {
-                    "tenant_id": row["tenant_id"],
-                    "tenant_name": row["tenant_name"],
-                    "created_at": row["created_at"],
-                    "status": row["status"],
-                    "metadata": json.loads(row["metadata"]) if row["metadata"] else {}
-                }
+                tenant = dict(row)
+                # Konwertuj metadata z JSON string na dict jeśli jest string
+                if isinstance(tenant.get('metadata'), str):
+                    try:
+                        tenant['metadata'] = json.loads(tenant['metadata'])
+                    except:
+                        tenant['metadata'] = {}
+                # Konwertuj daty na ISO format
+                for date_field in ['created_at', 'updated_at']:
+                    if tenant.get(date_field):
+                        tenant[date_field] = tenant[date_field].isoformat()
                 tenants.append(tenant)
             
             return jsonify({
                 "tenants": tenants,
-                "total_count": len(tenants),
-                "filter": status_filter or "all",
-                "retrieved_at": datetime.datetime.utcnow().isoformat()
+                "count": len(tenants),
+                "database": "PostgreSQL"
             }), 200
             
     except Exception as e:
@@ -212,30 +370,73 @@ def list_tenants():
 
 @app.route("/tenants/<tenant_id>", methods=["GET"])
 def get_tenant(tenant_id):
-    """Zwraca szczegóły określonego tenanta"""
+    """Zwraca szczegóły tenanta z PostgreSQL wraz z powiązanymi danymi"""
     logger.info(f"Tenant details requested for: {tenant_id}")
     
     try:
         with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            row = cursor.fetchone()
+            cursor = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             
-            if not row:
-                return jsonify({
-                    "error": "Tenant not found",
-                    "tenant_id": tenant_id
-                }), 404
+            # Pobierz dane tenanta
+            cursor.execute("SELECT * FROM tenants WHERE tenant_id = %s", (tenant_id,))
+            tenant_row = cursor.fetchone()
             
-            tenant = {
-                "tenant_id": row["tenant_id"],
-                "tenant_name": row["tenant_name"],
-                "created_at": row["created_at"],
-                "status": row["status"],
-                "metadata": json.loads(row["metadata"]) if row["metadata"] else {}
-            }
+            if not tenant_row:
+                return jsonify({"error": "Tenant not found"}), 404
             
-            return jsonify(tenant), 200
+            tenant = dict(tenant_row)
+            # Konwertuj metadata z JSON
+            if isinstance(tenant.get('metadata'), str):
+                try:
+                    tenant['metadata'] = json.loads(tenant['metadata'])
+                except:
+                    tenant['metadata'] = {}
+            
+            # Pobierz firmy tenanta
+            cursor.execute("SELECT * FROM companies WHERE tenant_id = %s ORDER BY created_at", (tenant_id,))
+            companies = [dict(row) for row in cursor.fetchall()]
+            
+            # Pobierz użytkowników tenanta (przez user_access)
+            cursor.execute("""
+                SELECT DISTINCT u.*, ua.access_type, ua.granted_at
+                FROM users u
+                JOIN user_access ua ON u.user_id = ua.user_id
+                WHERE ua.tenant_id = %s
+                ORDER BY u.created_at
+            """, (tenant_id,))
+            users = [dict(row) for row in cursor.fetchall()]
+            
+            # Konwertuj daty na ISO format
+            for date_field in ['created_at', 'updated_at']:
+                if tenant.get(date_field):
+                    tenant[date_field] = tenant[date_field].isoformat()
+            
+            for company in companies:
+                for date_field in ['created_at', 'updated_at']:
+                    if company.get(date_field):
+                        company[date_field] = company[date_field].isoformat()
+                if isinstance(company.get('metadata'), str):
+                    try:
+                        company['metadata'] = json.loads(company['metadata'])
+                    except:
+                        company['metadata'] = {}
+            
+            for user in users:
+                for date_field in ['created_at', 'updated_at', 'granted_at']:
+                    if user.get(date_field):
+                        user[date_field] = user[date_field].isoformat()
+                if isinstance(user.get('metadata'), str):
+                    try:
+                        user['metadata'] = json.loads(user['metadata'])
+                    except:
+                        user['metadata'] = {}
+            
+            return jsonify({
+                "tenant": tenant,
+                "companies": companies,
+                "users": users,
+                "database": "PostgreSQL"
+            }), 200
             
     except Exception as e:
         logger.error(f"Error getting tenant {tenant_id}: {str(e)}")
@@ -246,7 +447,7 @@ def get_tenant(tenant_id):
 
 @app.route("/tenants/<tenant_id>", methods=["DELETE"])
 def delete_tenant(tenant_id):
-    """Usuwa tenanta z systemu"""
+    """Usuwa tenanta i wszystkie powiązane dane z PostgreSQL"""
     logger.info(f"Tenant deletion requested for: {tenant_id}")
     
     try:
@@ -254,26 +455,33 @@ def delete_tenant(tenant_id):
             cursor = conn.cursor()
             
             # Sprawdź czy tenant istnieje
-            cursor.execute("SELECT tenant_id FROM tenants WHERE tenant_id = ?", (tenant_id,))
+            cursor.execute("SELECT tenant_id FROM tenants WHERE tenant_id = %s", (tenant_id,))
             if not cursor.fetchone():
-                return jsonify({
-                    "error": "Tenant not found",
-                    "tenant_id": tenant_id
-                }), 404
+                return jsonify({"error": "Tenant not found"}), 404
             
-            # Usuń tenanta
-            cursor.execute("DELETE FROM tenants WHERE tenant_id = ?", (tenant_id,))
+            # Usuń powiązane dane (kaskadowo dzięki foreign keys)
+            # Najpierw policz co usuniemy
+            cursor.execute("SELECT COUNT(*) FROM companies WHERE tenant_id = %s", (tenant_id,))
+            company_count = cursor.fetchone()[0]
+            
+            cursor.execute("""
+                SELECT COUNT(DISTINCT u.user_id) FROM users u
+                JOIN user_access ua ON u.user_id = ua.user_id
+                WHERE ua.tenant_id = %s
+            """, (tenant_id,))
+            user_count = cursor.fetchone()[0]
+            
+            # Usuń tenanta (kaskadowo usuwa companies, user_access, user_roles)
+            cursor.execute("DELETE FROM tenants WHERE tenant_id = %s", (tenant_id,))
+            
             conn.commit()
-            
-            logger.info(f"Tenant {tenant_id} deleted successfully")
-            
-            # Publikuj aktualizację do OPAL Server
-            publish_tenant_update(tenant_id, "remove")
+            logger.info(f"Tenant {tenant_id} deleted successfully with {company_count} companies and {user_count} users")
             
             return jsonify({
                 "message": "Tenant deleted successfully",
                 "tenant_id": tenant_id,
-                "deleted_at": datetime.datetime.utcnow().isoformat()
+                "deleted_companies": company_count,
+                "affected_users": user_count
             }), 200
             
     except Exception as e:
@@ -285,7 +493,7 @@ def delete_tenant(tenant_id):
 
 @app.route("/tenants/<tenant_id>/status", methods=["PUT"])
 def update_tenant_status(tenant_id):
-    """Aktualizuje status tenanta"""
+    """Aktualizuje status tenanta w PostgreSQL"""
     logger.info(f"Tenant status update requested for: {tenant_id}")
     
     if not request.is_json:
@@ -305,25 +513,34 @@ def update_tenant_status(tenant_id):
             cursor = conn.cursor()
             
             # Sprawdź czy tenant istnieje
-            cursor.execute("SELECT tenant_id FROM tenants WHERE tenant_id = ?", (tenant_id,))
-            if not cursor.fetchone():
+            cursor.execute("SELECT status FROM tenants WHERE tenant_id = %s", (tenant_id,))
+            result = cursor.fetchone()
+            if not result:
+                return jsonify({"error": "Tenant not found"}), 404
+            
+            old_status = result[0]
+            
+            if old_status == new_status:
                 return jsonify({
-                    "error": "Tenant not found",
-                    "tenant_id": tenant_id
-                }), 404
+                    "message": "Status unchanged",
+                    "tenant_id": tenant_id,
+                    "status": new_status
+                }), 200
             
-            # Zaktualizuj status
-            cursor.execute("UPDATE tenants SET status = ? WHERE tenant_id = ?", (new_status, tenant_id))
+            # Aktualizuj status
+            cursor.execute("""
+                UPDATE tenants 
+                SET status = %s, updated_at = NOW() 
+                WHERE tenant_id = %s
+            """, (new_status, tenant_id))
+            
             conn.commit()
-            
-            logger.info(f"Tenant {tenant_id} status updated to {new_status}")
-            
-            # Publikuj aktualizację do OPAL Server
-            publish_tenant_update(tenant_id)
+            logger.info(f"Tenant {tenant_id} status updated from {old_status} to {new_status}")
             
             return jsonify({
                 "message": "Tenant status updated successfully",
                 "tenant_id": tenant_id,
+                "old_status": old_status,
                 "new_status": new_status,
                 "updated_at": datetime.datetime.utcnow().isoformat()
             }), 200
@@ -337,95 +554,68 @@ def update_tenant_status(tenant_id):
 
 @app.route("/", methods=["GET"])
 def root():
-    """Endpoint główny z informacjami o API"""
+    """Root endpoint z informacjami o serwisie"""
     return jsonify({
-        "service": "Provisioning API",
-        "version": "1.0.0",
-        "description": "Standalone tenant provisioning service for OPA Zero Poll system",
+        "service": "provisioning-api",
+        "version": "2.0.0-postgresql",
+        "description": "Complete tenant provisioning with PostgreSQL backend",
         "endpoints": {
-            "health": "/health",
-            "provision_tenant": "POST /provision-tenant",
-            "list_tenants": "GET /tenants",
-            "get_tenant": "GET /tenants/{tenant_id}",
-            "delete_tenant": "DELETE /tenants/{tenant_id}",
+            "health": "GET /health",
+            "provision": "POST /provision-tenant",
+            "list": "GET /tenants",
+            "get": "GET /tenants/{tenant_id}",
+            "delete": "DELETE /tenants/{tenant_id}",
             "update_status": "PUT /tenants/{tenant_id}/status"
-        }
+        },
+        "database": "PostgreSQL",
+        "features": [
+            "Complete tenant structure creation",
+            "Automatic Portal Administrator setup",
+            "Full permissions management",
+            "OPAL integration"
+        ]
     }), 200
 
 @app.errorhandler(404)
 def not_found(error):
-    """Handler dla błędów 404"""
-    logger.warning(f"404 error: {request.url}")
-    return jsonify({
-        "error": "Endpoint not found",
-        "url": request.url,
-        "available_endpoints": ["/health", "/provision-tenant", "/tenants", "/tenants/{id}", "/"]
-    }), 404
+    return jsonify({"error": "Endpoint not found"}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    """Handler dla błędów 500"""
-    logger.error(f"500 error: {str(error)}")
-    return jsonify({
-        "error": "Internal server error",
-        "message": "Something went wrong"
-    }), 500
+    logger.error(f"Internal server error: {str(error)}")
+    return jsonify({"error": "Internal server error"}), 500
 
 def publish_tenant_update(tenant_id, action="add"):
     """
-    Publikuje aktualizację tenanta do OPAL Server
-    
-    Args:
-        tenant_id (str): ID tenanta
-        action (str): "add" lub "remove"
+    Publikuje aktualizację danych tenanta do OPAL Server
+    używając rewolucyjnego single topic multi-tenant
     """
     try:
-        # Konfiguracja data source dla tenanta
-        data_config = {
+        data = {
             "entries": [
                 {
                     "url": f"{DATA_PROVIDER_API_URL}/tenants/{tenant_id}/acl",
-                    "dst_path": f"/acl/{tenant_id}",
-                    "topics": ["multi_tenant_data"],
-                    "config": {
-                        "headers": {
-                            "Content-Type": "application/json",
-                            "Accept": "application/json"
-                        }
-                    }
+                    "topics": ["multi_tenant_data"],  # Single topic for all tenants
+                    "dst_path": f"/acl/{tenant_id}"   # Hierarchical isolation
                 }
             ],
-            "reason": f"Tenant {action}: {tenant_id}"
+            "reason": f"Tenant {action}: {tenant_id} provisioning complete"
         }
         
-        # Wyślij do OPAL Server
         response = requests.post(
             f"{OPAL_SERVER_URL}/data/config",
-            json=data_config,
-            headers={"Content-Type": "application/json"},
+            json=data,
             timeout=10
         )
         
         if response.status_code == 200:
-            logger.info(f"Successfully published {action} for tenant {tenant_id} to OPAL Server")
-            return True
+            logger.info(f"✅ OPAL update published for tenant {tenant_id} (action: {action})")
         else:
-            logger.error(f"Failed to publish {action} for tenant {tenant_id}: {response.status_code} - {response.text}")
-            return False
+            logger.warning(f"⚠️ OPAL update failed for tenant {tenant_id}: {response.status_code}")
             
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error publishing {action} for tenant {tenant_id} to OPAL Server: {str(e)}")
-        return False
     except Exception as e:
-        logger.error(f"Unexpected error publishing {action} for tenant {tenant_id}: {str(e)}")
-        return False
+        logger.error(f"❌ Error publishing OPAL update for tenant {tenant_id}: {e}")
 
 if __name__ == "__main__":
-    # Inicjalizuj bazę danych
-    init_database()
-    
-    port = int(os.environ.get("PORT", 8010))
-    debug = os.environ.get("DEBUG", "false").lower() == "true"
-    
-    logger.info(f"Starting Provisioning API on port {port}")
-    app.run(host="0.0.0.0", port=port, debug=debug) 
+    port = int(os.environ.get('PORT', 8010))
+    app.run(host="0.0.0.0", port=port, debug=False) 

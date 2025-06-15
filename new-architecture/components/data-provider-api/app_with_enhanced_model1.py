@@ -20,18 +20,6 @@ from flask_cors import CORS
 import jwt
 from cryptography.hazmat.primitives import serialization
 
-# Import DAO for database integration
-try:
-    import sys
-    sys.path.append('/app/shared')
-    from database.dao import TenantDAO, UserDAO, UserProfileDAO
-    from database.connection import init_database
-    DATABASE_AVAILABLE = True
-    logger.info("✅ Database DAO imported successfully")
-except ImportError as e:
-    DATABASE_AVAILABLE = False
-    logger.warning(f"⚠️ Database DAO not available: {e}")
-
 # Import Model 2 components
 try:
     from model2_validator import Model2Validator
@@ -54,7 +42,6 @@ try:
     UNIFIED_MODEL_AVAILABLE = True
 except ImportError:
     UNIFIED_MODEL_AVAILABLE = False
-
 # Konfiguracja logowania
 logging.basicConfig(
     level=logging.INFO,
@@ -333,7 +320,7 @@ ACL_DATA = {
             "company3"
         ]
     }
-}
+}}
 
 @app.before_request
 def log_request_info():

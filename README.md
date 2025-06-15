@@ -14,11 +14,12 @@
 - Obsługuje Model 1 (legacy ACL) i Model 2 (RBAC + REBAC-like)
 - Przygotowany do integracji z Portal UI dla zarządzania uprawnieniami
 
-#### Provisioning API (Port 8010)
-- Zarządzanie tenantami i ich konfiguracją
-- CRUD operations dla tenant lifecycle
-- Integracja z systemami zewnętrznymi
-- Automatyczne powiadamianie OPAL o zmianach tenantów
+#### Provisioning API v2.0.0-postgresql (Port 8010)
+- Kompletny provisioning tenantów z PostgreSQL RBAC/REBAC
+- Automatyczne tworzenie struktury: Tenant → Firma → Administrator
+- Generator administratorów Portal z 6 kluczowymi uprawnieniami
+- Integracja OPAL z single topic multi-tenant publishing
+- Zastąpienie SQLite → PostgreSQL (eliminacja duplikacji danych)
 
 #### OPAL Server + Client (Porty 7002, 7000)
 - Orkiestruje synchronizację polityk i danych
@@ -103,14 +104,19 @@ curl "http://localhost:8181/v1/data/rbac/allow" \
 curl "http://localhost:8110/v2/users/user42/permissions?app=fk&action=view_entry&company_id=company1&tenant_id=tenant125"
 ```
 
-### 4. Zarządzanie tenantami
+### 4. Zarządzanie tenantami (v2.0.0)
 ```bash
-# Dodaj nowego tenanta
-curl -X POST http://localhost:8010/tenants \
+# Provisioning kompletnej struktury tenanta
+curl -X POST http://localhost:8010/provision-tenant \
   -H "Content-Type: application/json" \
-  -d '{"tenant_id": "new_tenant", "name": "New Company", "config": {}}'
+  -d '{
+    "tenant_id": "new_tenant_123", 
+    "tenant_name": "New Company Ltd",
+    "admin_email": "admin@newcompany.com",
+    "admin_name": "Jan Kowalski"
+  }'
 
-# Lista tenantów
+# Lista tenantów z PostgreSQL
 curl http://localhost:8010/tenants
 ```
 
