@@ -28,9 +28,16 @@ graph TD
 
 ### 🏢 Data Provider API - **KLUCZOWY KOMPONENT**
 - Flask, port 8110
+- **Implementuje Enhanced Model 1** - rozszerzoną strukturę RBAC z separacją per aplikacja
 - **Implementuje OPAL External Data Sources API**
 - **Obsługuje HTTP 307 redirects z JWT token authentication**
 - **Zwraca per-tenant DataSourceConfig na podstawie JWT claims**
+- **Enhanced Model 1 Features:**
+  - Roles per aplikacja: `user.roles.fk`, `user.roles.hr`, `user.roles.crm`
+  - Permissions per aplikacja: `user.permissions.fk`, `user.permissions.hr`, `user.permissions.crm`
+  - Companies w minimalnym formacie: tylko GUID arrays
+  - Role definitions per aplikacja z odpowiednimi uprawnieniami
+  - Pełna kompatybilność wsteczna z istniejącymi systemami
 - Odbiera webhooki GitHub i przekierowuje do OPAL Server
 - Orkiestruje synchronizację danych między systemami
 

@@ -17,6 +17,8 @@ from typing import Dict, Any, Optional, List
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+import jwt
+from cryptography.hazmat.primitives import serialization
 
 # Import Model 2 components
 try:
@@ -26,6 +28,20 @@ except ImportError:
     Model2Validator = None
     Model2Endpoints = None
 
+# Import OPAL External Data Sources
+try:
+    from opal_endpoints import register_opal_endpoints
+    OPAL_ENDPOINTS_AVAILABLE = True
+except ImportError:
+    OPAL_ENDPOINTS_AVAILABLE = False
+
+
+# Import Unified Model
+try:
+    from unified_model import get_unified_tenant_data
+    UNIFIED_MODEL_AVAILABLE = True
+except ImportError:
+    UNIFIED_MODEL_AVAILABLE = False
 # Konfiguracja logowania
 logging.basicConfig(
     level=logging.INFO,
@@ -87,44 +103,222 @@ except Exception as e:
     logger.error(f"❌ Error loading Model 2: {e}")
     MODEL2_AVAILABLE = False
 
-# Statyczne dane testowe ACL (Model 1)
+# Statyczne dane testowe ACL (Enhanced Model 1)
 ACL_DATA = {
     "tenant1": {
         "tenant_id": "tenant1",
-        "tenant_name": "Test Company 1", 
+        "tenant_name": "Test Company 1",
         "users": [
             {
                 "user_id": "user1",
                 "username": "admin_user",
-                "roles": ["admin"],
-                "permissions": ["read", "write", "delete", "manage_users"]
+                "roles": {
+                    "fk": [
+                        "fk_admin"
+                    ],
+                    "hr": [
+                        "hr_admin"
+                    ],
+                    "crm": [
+                        "crm_admin"
+                    ]
+                },
+                "permissions": {
+                    "fk": [
+                        "view_entry",
+                        "edit_entry",
+                        "delete_entry",
+                        "manage_accounts",
+                        "generate_reports",
+                        "approve_entries"
+                    ],
+                    "hr": [
+                        "view_profile",
+                        "edit_profile",
+                        "delete_profile",
+                        "manage_contracts",
+                        "manage_salaries",
+                        "generate_hr_reports"
+                    ],
+                    "crm": [
+                        "view_client",
+                        "edit_client",
+                        "delete_client",
+                        "manage_deals",
+                        "generate_crm_reports",
+                        "manage_pipelines"
+                    ]
+                },
+                "companies": [
+                    "company1",
+                    "company2"
+                ]
             },
             {
-                "user_id": "user2", 
+                "user_id": "user2",
                 "username": "regular_user",
-                "roles": ["user"],
-                "permissions": ["read", "write"]
+                "roles": {
+                    "fk": [
+                        "fk_editor"
+                    ],
+                    "hr": [
+                        "hr_viewer"
+                    ]
+                },
+                "permissions": {
+                    "fk": [
+                        "view_entry",
+                        "edit_entry",
+                        "generate_reports"
+                    ],
+                    "hr": [
+                        "view_profile",
+                        "view_contract"
+                    ]
+                },
+                "companies": [
+                    "company1"
+                ]
+            },
+            {
+                "user_id": "user3",
+                "username": "viewer_user",
+                "roles": {
+                    "fk": [
+                        "fk_viewer"
+                    ]
+                },
+                "permissions": {
+                    "fk": [
+                        "view_entry",
+                        "generate_basic_reports"
+                    ]
+                },
+                "companies": [
+                    "company2"
+                ]
             }
         ],
         "roles": {
-            "admin": ["read", "write", "delete", "manage_users", "manage_tenant"],
-            "user": ["read", "write"]
-        }
+            "fk": {
+                "fk_admin": [
+                    "view_entry",
+                    "edit_entry",
+                    "delete_entry",
+                    "manage_accounts",
+                    "generate_reports",
+                    "approve_entries",
+                    "manage_chart_of_accounts"
+                ],
+                "fk_editor": [
+                    "view_entry",
+                    "edit_entry",
+                    "generate_reports",
+                    "create_invoices",
+                    "edit_invoices"
+                ],
+                "fk_viewer": [
+                    "view_entry",
+                    "generate_basic_reports",
+                    "view_invoices"
+                ]
+            },
+            "hr": {
+                "hr_admin": [
+                    "view_profile",
+                    "edit_profile",
+                    "delete_profile",
+                    "manage_contracts",
+                    "manage_salaries",
+                    "generate_hr_reports",
+                    "manage_vacation_requests"
+                ],
+                "hr_editor": [
+                    "view_profile",
+                    "edit_profile",
+                    "edit_contract",
+                    "generate_hr_reports",
+                    "manage_vacation_requests"
+                ],
+                "hr_viewer": [
+                    "view_profile",
+                    "view_contract",
+                    "view_organizational_structure"
+                ]
+            },
+            "crm": {
+                "crm_admin": [
+                    "view_client",
+                    "edit_client",
+                    "delete_client",
+                    "manage_deals",
+                    "generate_crm_reports",
+                    "manage_pipelines",
+                    "access_analytics"
+                ],
+                "crm_editor": [
+                    "view_client",
+                    "edit_client",
+                    "manage_deals",
+                    "generate_crm_reports",
+                    "manage_activities"
+                ],
+                "crm_viewer": [
+                    "view_client",
+                    "view_deals",
+                    "view_activities",
+                    "generate_basic_crm_reports"
+                ]
+            }
+        },
+        "companies": [
+            "company1",
+            "company2"
+        ]
     },
     "tenant2": {
         "tenant_id": "tenant2",
         "tenant_name": "Test Company 2",
         "users": [
             {
-                "user_id": "user3",
-                "username": "viewer_user", 
-                "roles": ["viewer"],
-                "permissions": ["read"]
+                "user_id": "user4",
+                "username": "hr_specialist",
+                "roles": {
+                    "hr": [
+                        "hr_editor"
+                    ]
+                },
+                "permissions": {
+                    "hr": [
+                        "view_profile",
+                        "edit_profile",
+                        "edit_contract",
+                        "generate_hr_reports"
+                    ]
+                },
+                "companies": [
+                    "company3"
+                ]
             }
         ],
         "roles": {
-            "viewer": ["read"]
-        }
+            "hr": {
+                "hr_editor": [
+                    "view_profile",
+                    "edit_profile",
+                    "edit_contract",
+                    "generate_hr_reports",
+                    "manage_vacation_requests"
+                ],
+                "hr_viewer": [
+                    "view_profile",
+                    "view_contract"
+                ]
+            }
+        },
+        "companies": [
+            "company3"
+        ]
     }
 }
 
@@ -314,6 +508,19 @@ if MODEL2_AVAILABLE and Model2Endpoints:
         """Health check specyficzny dla Model 2"""
         return model2_endpoints.health_check()
 
+# ============================================================================
+# OPAL External Data Sources Integration
+# ============================================================================
+
+# Rejestruj OPAL endpoints z opal_endpoints.py
+if OPAL_ENDPOINTS_AVAILABLE:
+    register_opal_endpoints(app, MODEL2_AVAILABLE)
+    logger.info("✅ OPAL External Data Sources endpoints registered")
+else:
+    logger.warning("⚠️ OPAL endpoints not available - missing dependencies")
+
+# ============================================================================
+
 @app.route("/", methods=["GET"])
 def root():
     """
@@ -333,7 +540,9 @@ def root():
             "model2_authorization": "/v2/authorization" if MODEL2_AVAILABLE else None,
             "model2_user_auth": "/v2/users/{user_id}/authorization" if MODEL2_AVAILABLE else None,
             "model2_permissions": "/v2/users/{user_id}/permissions" if MODEL2_AVAILABLE else None,
-            "model2_health": "/v2/health" if MODEL2_AVAILABLE else None
+            "model2_health": "/v2/health" if MODEL2_AVAILABLE else None,
+            "opal_data_config": "/data/config",
+            "opal_health": "/opal/health"
         },
         "features": {
             "model1_support": True,
@@ -364,14 +573,141 @@ def internal_error(error):
         "message": "Please check server logs for details"
     }), 500
 
-if __name__ == "__main__":
-    logger.info("🚀 Starting Data Provider API (Clean Version)")
-    logger.info(f"Model 2 support: {MODEL2_AVAILABLE}")
-    logger.info("Ready for OPAL External Data Sources integration")
+# ============================================================================
+# OPAL External Data Sources Integration
+def validate_opal_jwt(token: str) -> Optional[Dict[str, Any]]:
+    """
+    Waliduje OPAL JWT token
     
-    # Uruchom serwer Flask
-    app.run(
-        host="0.0.0.0",
-        port=8110,
-        debug=os.environ.get("FLASK_DEBUG", "False").lower() == "true"
-    ) 
+    Args:
+        token: JWT token string
+        
+    Returns:
+        Dict z claims lub None jeśli token nieprawidłowy
+    """
+    if not OPAL_JWT_AVAILABLE:
+        logger.error("OPAL JWT validation not available - missing dependencies")
+        return None
+        
+    if not OPAL_PUBLIC_KEY:
+        logger.error("OPAL_PUBLIC_KEY not configured")
+        return None
+    
+    try:
+        # Sprawdź czy to dev token OPAL
+        if token == "THIS_IS_A_DEV_SECRET":
+            logger.info("🔧 Using OPAL dev token - generating default config")
+            # Generuj domyślną konfigurację dla dev mode
+            default_claims = {
+                "client_id": "opal-dev-client",
+                "tenant_id": "acme",  # Domyślny tenant dla dev mode
+                "sub": "opal-dev-client",
+                "iss": "opal-dev",
+                "aud": "opal-dev"
+            }
+            
+            try:
+                data_source_config = get_data_source_config_for_client(default_claims)
+                logger.info("✅ Returning dev DataSourceConfig for OPAL dev token")
+                return jsonify(data_source_config), 200
+                
+            except Exception as e:
+                logger.error(f"❌ Error generating dev DataSourceConfig: {e}")
+                return jsonify({
+                    "error": "Internal server error",
+                    "details": "Failed to generate dev data source configuration"
+                }), 500
+        
+        # Dekoduj public key
+        public_key = serialization.load_pem_public_key(
+            OPAL_PUBLIC_KEY.encode('utf-8')
+        )
+        
+        # Waliduj JWT
+        payload = jwt.decode(
+            token,
+            public_key,
+            algorithms=[OPAL_JWT_ALGORITHM],
+            audience=OPAL_JWT_AUDIENCE,
+            issuer=OPAL_JWT_ISSUER
+        )
+        
+        logger.info(f"✅ OPAL JWT validated successfully for client: {payload.get('client_id', 'unknown')}")
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        logger.error("❌ OPAL JWT token expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.error(f"❌ OPAL JWT token invalid: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ OPAL JWT validation error: {e}")
+        return None
+
+def get_data_source_config_for_client(client_claims: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Generuje DataSourceConfig dla konkretnego OPAL Client na podstawie claims
+    
+    Args:
+        client_claims: Claims z JWT tokenu OPAL Client
+        
+    Returns:
+        DataSourceConfig zgodny z OPAL schema
+    """
+    # Wyciągnij identyfikator klienta z claims
+    client_id = client_claims.get('client_id', 'unknown')
+    tenant_id = client_claims.get('tenant_id', client_id)  # Fallback do client_id
+    
+    logger.info(f"Generating DataSourceConfig for client_id: {client_id}, tenant_id: {tenant_id}")
+    
+    # Bazowy URL dla tego Data Provider API
+    base_url = os.environ.get("DATA_PROVIDER_BASE_URL", "http://data-provider-api:8110")
+    
+    # Konfiguracja dla Model 1 (legacy ACL)
+    model1_entries = [
+        {
+            "url": f"{base_url}/tenants/{tenant_id}/acl",
+            "dst_path": f"/acl/{tenant_id}",
+            "topics": [f"acl_data/{tenant_id}"],
+            "config": {
+                "headers": {
+                    "Accept": "application/json",
+                    "User-Agent": "OPAL-Client"
+                }
+            }
+        }
+    ]
+    
+    # Konfiguracja dla Model 2 (jeśli dostępne)
+    model2_entries = []
+    if MODEL2_AVAILABLE:
+        model2_entries = [
+            {
+                "url": f"{base_url}/v2/authorization",
+                "dst_path": "/authorization",
+                "topics": [f"authorization_data/{tenant_id}"],
+                "config": {
+                    "headers": {
+                        "Accept": "application/json",
+                        "User-Agent": "OPAL-Client",
+                        "X-Tenant-ID": tenant_id
+                    }
+                }
+            }
+        ]
+    
+    # Połącz wszystkie entries
+    all_entries = model1_entries + model2_entries
+    
+    data_source_config = {
+        "entries": all_entries
+    }
+    
+    logger.info(f"Generated {len(all_entries)} data source entries for client {client_id}")
+    return data_source_config
+
+if __name__ == "__main__":
+    logger.info("🚀 Starting Data Provider API...")
+    logger.info(f"Model 2 support: {MODEL2_AVAILABLE}")
+    app.run(host="0.0.0.0", port=8110, debug=False)

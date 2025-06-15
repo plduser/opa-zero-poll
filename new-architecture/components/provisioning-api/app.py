@@ -10,6 +10,7 @@ import logging
 import datetime
 import os
 import json
+import requests
 from contextlib import contextmanager
 
 # Konfiguracja logowania
@@ -21,6 +22,10 @@ CORS(app)
 
 # Konfiguracja bazy danych
 DATABASE_PATH = os.environ.get("DATABASE_PATH", "tenants.db")
+
+# Konfiguracja OPAL Server
+OPAL_SERVER_URL = os.environ.get("OPAL_SERVER_URL", "http://opal-server:7002")
+DATA_PROVIDER_API_URL = os.environ.get("DATA_PROVIDER_API_URL", "http://data-provider-api:8110")
 
 def init_database():
     """Inicjalizuje bazę danych SQLite z tabelą tenantów"""
@@ -141,6 +146,9 @@ def provision_tenant():
             
             logger.info(f"Tenant {tenant_id} provisioned successfully")
             
+            # Publikuj aktualizację do OPAL Server
+            publish_tenant_update(tenant_id)
+            
             return jsonify({
                 "message": "Tenant provisioned successfully",
                 "tenant": {
@@ -259,6 +267,9 @@ def delete_tenant(tenant_id):
             
             logger.info(f"Tenant {tenant_id} deleted successfully")
             
+            # Publikuj aktualizację do OPAL Server
+            publish_tenant_update(tenant_id, "remove")
+            
             return jsonify({
                 "message": "Tenant deleted successfully",
                 "tenant_id": tenant_id,
@@ -306,6 +317,9 @@ def update_tenant_status(tenant_id):
             conn.commit()
             
             logger.info(f"Tenant {tenant_id} status updated to {new_status}")
+            
+            # Publikuj aktualizację do OPAL Server
+            publish_tenant_update(tenant_id)
             
             return jsonify({
                 "message": "Tenant status updated successfully",
@@ -356,6 +370,55 @@ def internal_error(error):
         "error": "Internal server error",
         "message": "Something went wrong"
     }), 500
+
+def publish_tenant_update(tenant_id, action="add"):
+    """
+    Publikuje aktualizację tenanta do OPAL Server
+    
+    Args:
+        tenant_id (str): ID tenanta
+        action (str): "add" lub "remove"
+    """
+    try:
+        # Konfiguracja data source dla tenanta
+        data_config = {
+            "entries": [
+                {
+                    "url": f"{DATA_PROVIDER_API_URL}/tenants/{tenant_id}/acl",
+                    "dst_path": f"/acl/{tenant_id}",
+                    "topics": ["multi_tenant_data"],
+                    "config": {
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "Accept": "application/json"
+                        }
+                    }
+                }
+            ],
+            "reason": f"Tenant {action}: {tenant_id}"
+        }
+        
+        # Wyślij do OPAL Server
+        response = requests.post(
+            f"{OPAL_SERVER_URL}/data/config",
+            json=data_config,
+            headers={"Content-Type": "application/json"},
+            timeout=10
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"Successfully published {action} for tenant {tenant_id} to OPAL Server")
+            return True
+        else:
+            logger.error(f"Failed to publish {action} for tenant {tenant_id}: {response.status_code} - {response.text}")
+            return False
+            
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error publishing {action} for tenant {tenant_id} to OPAL Server: {str(e)}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error publishing {action} for tenant {tenant_id}: {str(e)}")
+        return False
 
 if __name__ == "__main__":
     # Inicjalizuj bazę danych

@@ -146,9 +146,12 @@ services:
       # Policy subscription - subskrybuje polityki z OPAL Server
       - OPAL_POLICY_SUBSCRIPTION_DIRS=new-architecture/components/opa-standalone/policies
       
-      # Data sources configuration
+      # Data sources configuration - JEDEN TOPIC dla wielu tenantów
       - OPAL_DATA_UPDATER_ENABLED=true
-      - OPAL_DATA_TOPICS=tenant_1_data,tenant_2_data,tenant_3_data
+      - OPAL_DATA_TOPICS=multi_tenant_data
+      
+      # External Data Sources - wskazuje na Data Provider API
+      - OPAL_DATA_CONFIG_SOURCES=http://data-provider-api:8110/data/config
       
       # Włączenie polityk z GitHub repo
       - OPAL_POLICY_UPDATER_ENABLED=true
@@ -159,6 +162,7 @@ services:
       - opal-server
       - opa-standalone
       - redis-broadcast
+      - data-provider-api
     networks:
       - new-arch-network
 

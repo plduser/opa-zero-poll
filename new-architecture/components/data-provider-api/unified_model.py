@@ -1,0 +1,1 @@
+import json; import logging; from typing import Dict, Any, Optional; logger = logging.getLogger(__name__); def merge_enhanced_model1_with_model2(enhanced_model1_data, model2_data=None): return enhanced_model1_data if not model2_data else enhanced_model1_data

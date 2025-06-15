@@ -1,3 +1,176 @@
+# Data Provider API - Enhanced Model 1 Documentation
+
+## Przegląd
+
+Data Provider API implementuje Enhanced Model 1 - rozszerzoną strukturę danych RBAC z separacją per aplikacja i minimalnym formatem danych firmowych.
+
+**Base URL:** `http://localhost:8110`
+
+## Enhanced Model 1 Structure
+
+Enhanced Model 1 wprowadza następujące ulepszenia w stosunku do podstawowego Model 1:
+
+### 🎯 **Kluczowe cechy:**
+- **Roles per aplikacja**: `user.roles.fk`, `user.roles.hr`, `user.roles.crm`
+- **Permissions per aplikacja**: `user.permissions.fk`, `user.permissions.hr`, `user.permissions.crm`
+- **Companies w minimalnym formacie**: tylko GUID arrays `["company1", "company2"]`
+- **Role definitions per aplikacja**: definicje ról z odpowiednimi uprawnieniami
+- **Pełna kompatybilność wsteczna**: zachowana zgodność z istniejącymi systemami
+
+### 📊 **Struktura danych:**
+
+```json
+{
+  "model": "1",
+  "tenant_id": "tenant1",
+  "timestamp": "2025-06-15T10:40:23.164248",
+  "data": {
+    "tenant_id": "tenant1",
+    "tenant_name": "Test Company 1",
+    "users": [
+      {
+        "user_id": "user1",
+        "username": "admin_user",
+        "roles": {
+          "fk": ["fk_admin"],
+          "hr": ["hr_admin"],
+          "crm": ["crm_admin"]
+        },
+        "permissions": {
+          "fk": ["view_entry", "edit_entry", "delete_entry", "manage_accounts"],
+          "hr": ["view_profile", "edit_profile", "delete_profile", "manage_contracts"],
+          "crm": ["view_client", "edit_client", "delete_client", "manage_deals"]
+        },
+        "companies": ["company1", "company2"]
+      }
+    ],
+    "roles": {
+      "fk": {
+        "fk_admin": ["view_entry", "edit_entry", "delete_entry", "manage_accounts", "generate_reports", "approve_entries", "manage_chart_of_accounts"],
+        "fk_editor": ["view_entry", "edit_entry", "generate_reports", "create_invoices", "edit_invoices"],
+        "fk_viewer": ["view_entry", "generate_basic_reports", "view_invoices"]
+      },
+      "hr": {
+        "hr_admin": ["view_profile", "edit_profile", "delete_profile", "manage_contracts", "manage_salaries", "generate_hr_reports", "manage_vacation_requests"],
+        "hr_editor": ["view_profile", "edit_profile", "edit_contract", "generate_hr_reports", "manage_vacation_requests"],
+        "hr_viewer": ["view_profile", "view_contract", "view_organizational_structure"]
+      },
+      "crm": {
+        "crm_admin": ["view_client", "edit_client", "delete_client", "manage_deals", "generate_crm_reports", "manage_pipelines", "access_analytics"],
+        "crm_editor": ["view_client", "edit_client", "manage_deals", "generate_crm_reports", "manage_activities"],
+        "crm_viewer": ["view_client", "view_deals", "view_activities", "generate_basic_crm_reports"]
+      }
+    },
+    "companies": ["company1", "company2"]
+  }
+}
+```
+
+## API Endpoints
+
+### 1. Get Tenant ACL Data
+
+#### `GET /tenants/{tenant_id}/acl`
+
+Pobierz dane ACL dla konkretnego tenanta w formacie Enhanced Model 1.
+
+**Path Parameters:**
+- `tenant_id` (required): Identyfikator tenanta (np. "tenant1", "tenant2")
+
+**Response:**
+```json
+{
+  "model": "1",
+  "tenant_id": "tenant1",
+  "timestamp": "2025-06-15T10:40:23.164248",
+  "data": {
+    "tenant_id": "tenant1",
+    "tenant_name": "Test Company 1",
+    "users": [...],
+    "roles": {...},
+    "companies": [...]
+  }
+}
+```
+
+**Status Codes:**
+- `200 OK`: Dane zwrócone pomyślnie
+- `404 Not Found`: Tenant nie istnieje
+- `500 Internal Server Error`: Błąd serwera
+
+### 2. List Available Tenants
+
+#### `GET /tenants`
+
+Pobierz listę dostępnych tenantów.
+
+**Response:**
+```json
+{
+  "tenants": [
+    {
+      "tenant_id": "tenant1",
+      "tenant_name": "Test Company 1",
+      "status": "active"
+    },
+    {
+      "tenant_id": "tenant2", 
+      "tenant_name": "Test Company 2",
+      "status": "active"
+    }
+  ],
+  "total": 2
+}
+```
+
+### 3. Health Check
+
+#### `GET /health`
+
+Sprawdź status serwisu Data Provider API.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-06-15T10:40:23.164248",
+  "version": "1.0.0",
+  "model": "Enhanced Model 1",
+  "services": {
+    "opa": "healthy",
+    "provisioning_api": "healthy"
+  }
+}
+```
+
+## Aplikacje i Role
+
+### 🏦 **FK (Finanse i Księgowość)**
+- `fk_admin`: Pełne uprawnienia księgowe
+- `fk_editor`: Edycja wpisów i generowanie raportów
+- `fk_viewer`: Tylko odczyt i podstawowe raporty
+
+### 👥 **HR (Zasoby Ludzkie)**
+- `hr_admin`: Pełne zarządzanie profilami i kontraktami
+- `hr_editor`: Edycja profili i zarządzanie urlopami
+- `hr_viewer`: Tylko odczyt profili i struktury organizacyjnej
+
+### 🤝 **CRM (Zarządzanie Klientami)**
+- `crm_admin`: Pełne zarządzanie klientami i analityka
+- `crm_editor`: Zarządzanie klientami i transakcjami
+- `crm_viewer`: Tylko odczyt klientów i podstawowe raporty
+
+## Migracja do Model 2
+
+Enhanced Model 1 stanowi solidną podstawę dla przyszłej migracji do Model 2, który będzie supersetem obecnej struktury z dodatkowymi funkcjonalnościami:
+
+- **Teams**: Grupy użytkowników z wspólnymi uprawnieniami
+- **Memberships**: Przynależność użytkowników do zespołów
+- **Inheritance**: Dziedziczenie uprawnień z zespołów
+- **Advanced REBAC**: Relacyjne kontrole dostępu
+
+---
+
 # Policy Management Service - API Documentation
 
 ## Przegląd
