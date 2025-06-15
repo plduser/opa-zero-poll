@@ -1,14 +1,11 @@
 FROM openpolicyagent/opa:latest
 
-# Copy policies to container
-COPY policies/ /policies/
-
 # Expose OPA default port
 EXPOSE 8181
 
-# Health check (simplified without wget)
+# Health check - sprawdza czy OPA server działa
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD test /policies/ || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8181/health || exit 1
 
-# Run OPA server with policies loaded
-CMD ["run", "--server", "--addr", "0.0.0.0:8181", "--log-level", "info", "/policies/"] 
+# Run OPA server bez automatycznego ładowania polityk - OPAL Client będzie zarządzał politykami
+CMD ["run", "--server", "--addr", "0.0.0.0:8181", "--log-level", "info"] 

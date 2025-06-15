@@ -12,9 +12,9 @@ services:
       - PORT=8110
       - DEBUG=false
       - WEBHOOK_SECRET=twoj_super_tajny_klucz123!@#
-      - INTEGRATION_SCRIPTS_URL=http://integration-scripts-api:8000
       - OPA_URL=http://opa-standalone-new:8181
       - PROVISIONING_API_URL=http://provisioning-api-new:8010
+      - DISABLE_JWT_VALIDATION=true
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8110/health"]
       interval: 30s
@@ -67,45 +67,17 @@ services:
     networks:
       - new-arch-network
 
-  # Integration Scripts API - synchronizacja danych między serwisami
-  integration-scripts:
-    build: ./new-architecture/integration-scripts
-    platform: linux/arm64
-    container_name: integration-scripts-api
+  # Redis - broadcast channel dla OPAL Server/Client komunikacji
+  redis-broadcast:
+    image: redis:7-alpine
+    container_name: redis-broadcast
     ports:
-      - "8000:8000"
-    environment:
-      - PORT=8000
-      - DEBUG=false
-      - DATA_PROVIDER_URL=http://data-provider-api:8110
-      - OPA_URL=http://opa-standalone-new:8181
-      - PROVISIONING_URL=http://provisioning-api-new:8010
-    depends_on:
-      - data-provider-api
-      - provisioning-api
-      - opa-standalone
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    restart: unless-stopped
-    networks:
-      - new-arch-network
-
-  # Postgres - broadcast channel dla OPAL Server/Client komunikacji
-  broadcast_channel:
-    image: postgres:alpine
-    container_name: broadcast_channel
-    environment:
-      - POSTGRES_DB=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - "6380:6379"
+    command: redis-server --appendonly yes
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - redis_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -123,24 +95,25 @@ services:
     volumes:
       - ./data-config.json:/data-config.json
     environment:
-      # Broadcast channel (Postgres)
-      - OPAL_BROADCAST_URI=postgres://postgres:postgres@broadcast_channel:5432/postgres
+      # Broadcast channel (Redis)
+      - OPAL_BROADCAST_URI=redis://redis-broadcast:6379
       
-      # GitHub Policy Repository
+      # GitHub Policy Repository - WŁĄCZONE z lokalnym repo
       - OPAL_POLICY_REPO_URL=https://github.com/plduser/opa-zero-poll.git
       - OPAL_POLICY_REPO_MAIN_BRANCH=main
       - OPAL_POLICY_REPO_PATH=new-architecture/components/opa-standalone/policies
       - OPAL_POLICY_REPO_POLLING_INTERVAL=30
       
       # Data Configuration
-      - DATA_CONFIG_SOURCES_FILE_PATH=/data-config.json
-      - DATA_CONFIG_ENABLED=true
+      - OPAL_DATA_CONFIG_SOURCES_FILE_PATH=/data-config.json
+      - OPAL_DATA_CONFIG_ENABLED=true
+      - OPAL_ALL_DATA_URL=http://simple-api-provider:8090/full-snapshot
       
       # Server Performance
-      - LOG_LEVEL=DEBUG
+      - OPAL_LOG_LEVEL=DEBUG
     depends_on:
-      - broadcast_channel
-      - data-provider-api
+      - redis-broadcast
+      - simple-api-provider
       - provisioning-api
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7002/healthcheck"]
@@ -161,32 +134,51 @@ services:
     environment:
       # OPAL Server connection
       - OPAL_SERVER_URL=http://opal-server:7002
-      - OPAL_CLIENT_STAT_ID=opal-client-1
-      
-      # OPA connection (External OPA - nie inline)
-      - OPAL_POLICY_STORE_URL=http://opa-standalone-new:8181
-      - OPAL_POLICY_SUBSCRIPTION_DIRS=new-architecture/components/opa-standalone/policies
-      
-      # Data sources configuration
-      - OPAL_DATA_UPDATER_ENABLED=true
+      - OPAL_FETCH_PROVIDER_ENABLED=true
       - OPAL_INLINE_OPA_ENABLED=false
       
-      # Client Performance
-      - OPAL_LOG_LEVEL=DEBUG
-      - OPAL_LOG_FORMAT_INCLUDE_PID=true
+      # Broadcast channel (Redis)
+      - OPAL_BROADCAST_URI=redis://redis-broadcast:6379
       
-      # Disable authentication completely
-      - OPAL_AUTH_TOKEN=
-      - OPAL_CLIENT_TOKEN=
+      # OPA connection (External OPA)
+      - OPAL_POLICY_STORE_URL=http://opa-standalone-new:8181
+      
+      # Policy subscription - subskrybuje polityki z OPAL Server
+      - OPAL_POLICY_SUBSCRIPTION_DIRS=new-architecture/components/opa-standalone/policies
+      
+      # Data sources configuration - JEDEN TOPIC dla wielu tenantów
+      - OPAL_DATA_UPDATER_ENABLED=true
+      - OPAL_DATA_TOPICS=multi_tenant_data
+      
+      # External Data Sources - wskazuje na Data Provider API
+      - OPAL_DATA_CONFIG_SOURCES=http://data-provider-api:8110/data/config
+      
+      # Włączenie polityk z GitHub repo
+      - OPAL_POLICY_UPDATER_ENABLED=true
+      
+      # Debug
+      - OPAL_LOG_LEVEL=DEBUG
     depends_on:
       - opal-server
       - opa-standalone
+      - redis-broadcast
+      - data-provider-api
+    networks:
+      - new-arch-network
+
+  # Simple API Provider - prosty nginx z na sztywno zdefiniowanymi odpowiedziami
+  simple-api-provider:
+    build: ./simple-api-provider
+    platform: linux/arm64
+    container_name: simple-api-provider
+    ports:
+      - "8090:8090"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:7000/healthcheck"]
+      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 5s
     restart: unless-stopped
     networks:
       - new-arch-network
@@ -194,9 +186,10 @@ services:
 volumes:
   provisioning_data:
     driver: local
-  postgres_data:
+  redis_data:
     driver: local
+
 
 networks:
   new-arch-network:
-    driver: bridge 
+    driver: bridge

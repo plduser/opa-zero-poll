@@ -14,6 +14,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Skopiuj kod aplikacji
 COPY app.py .
+COPY opal_endpoints.py .
+
+# Skopiuj pliki Model 2
+COPY model2*.py ./
+COPY model2-sample-data.json ./
 
 # Utwórz użytkownika bez uprawnień root
 RUN adduser --disabled-password --gecos '' appuser && \

@@ -1,36 +1,67 @@
+#!/usr/bin/env python3
 """
-Data Provider API - Standalone Service
-Symuluje zewnętrzny system ACL dostarczający dane uprawnień dla różnych tenantów.
+Data Provider API - Oczyszczona wersja bez webhook i Integration Scripts
+
+Serwis Flask dostarczający dane ACL dla OPA w architekturze multi-tenant.
+Obsługuje Model 1 (legacy) i Model 2 (RBAC + REBAC-like).
+
+Przygotowany do integracji z OPAL External Data Sources (Task 36).
 """
 
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-import logging
-import datetime
 import os
-import requests
+import json
 import time
-from typing import Dict, List, Optional, Any
-import hashlib
-import hmac
+import datetime
+import logging
+from typing import Dict, Any, Optional, List
+import requests
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import jwt
+from cryptography.hazmat.primitives import serialization
 
+# Import Model 2 components
+try:
+    from model2_validator import Model2Validator
+    from model2_endpoints import Model2Endpoints
+except ImportError:
+    Model2Validator = None
+    Model2Endpoints = None
+
+# Import OPAL External Data Sources
+try:
+    from opal_endpoints import register_opal_endpoints
+    OPAL_ENDPOINTS_AVAILABLE = True
+except ImportError:
+    OPAL_ENDPOINTS_AVAILABLE = False
+
+
+# Import Unified Model
+try:
+    from unified_model import get_unified_tenant_data
+    UNIFIED_MODEL_AVAILABLE = True
+except ImportError:
+    UNIFIED_MODEL_AVAILABLE = False
 # Konfiguracja logowania
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 CORS(app)
 
-# Metryki aplikacji
 class AppMetrics:
+    """Klasa do śledzenia metryk aplikacji"""
     def __init__(self):
         self.start_time = time.time()
         self.request_count = 0
         self.last_health_check = None
-    
+
     def increment_requests(self):
         self.request_count += 1
-    
+
     def get_uptime(self):
         return time.time() - self.start_time
     
@@ -40,61 +71,255 @@ class AppMetrics:
 metrics = AppMetrics()
 
 # Konfiguracja URL-i serwisów
-INTEGRATION_SCRIPTS_URL = os.environ.get("INTEGRATION_SCRIPTS_URL", "http://integration-scripts-api:8000")
 OPA_URL = os.environ.get("OPA_URL", "http://opa-standalone-new:8181")  
 PROVISIONING_API_URL = os.environ.get("PROVISIONING_API_URL", "http://provisioning-api-new:8010")
 
-# GitHub webhook configuration
-WEBHOOK_SECRET = os.environ.get("WEBHOOK_SECRET", "default-secret-key-change-in-production")
+# Wczytaj dane Model 2 jeśli dostępne
+MODEL2_DATA = None
+MODEL2_AVAILABLE = True
+try:
+    with open("model2-sample-data.json", "r", encoding="utf-8") as f:
+        MODEL2_DATA = json.load(f)
+    logger.info("✅ Model 2 data loaded successfully")
+    
+    # Walidacja danych Model 2
+    if Model2Validator:
+        validator = Model2Validator()
+        if validator.validate(MODEL2_DATA):
+            logger.info("✅ Model 2 data validation passed")
+        else:
+            logger.error("❌ Model 2 data validation failed")
+            MODEL2_AVAILABLE = False
+    else:
+        logger.warning("⚠️ Model 2 validator not available")
+        
+except (FileNotFoundError, ImportError):
+    logger.warning("⚠️ Model 2 data file or validator not found - using only Model 1")
+    MODEL2_AVAILABLE = False
+except json.JSONDecodeError as e:
+    logger.error(f"❌ Error parsing Model 2 data: {e}")
+    MODEL2_AVAILABLE = False
+except Exception as e:
+    logger.error(f"❌ Error loading Model 2: {e}")
+    MODEL2_AVAILABLE = False
 
-# Statyczne dane testowe ACL
+# Statyczne dane testowe ACL (Enhanced Model 1)
 ACL_DATA = {
     "tenant1": {
         "tenant_id": "tenant1",
-        "tenant_name": "Test Company 1", 
+        "tenant_name": "Test Company 1",
         "users": [
             {
                 "user_id": "user1",
                 "username": "admin_user",
-                "roles": ["admin"],
-                "permissions": ["read", "write", "delete", "manage_users"]
+                "roles": {
+                    "fk": [
+                        "fk_admin"
+                    ],
+                    "hr": [
+                        "hr_admin"
+                    ],
+                    "crm": [
+                        "crm_admin"
+                    ]
+                },
+                "permissions": {
+                    "fk": [
+                        "view_entry",
+                        "edit_entry",
+                        "delete_entry",
+                        "manage_accounts",
+                        "generate_reports",
+                        "approve_entries"
+                    ],
+                    "hr": [
+                        "view_profile",
+                        "edit_profile",
+                        "delete_profile",
+                        "manage_contracts",
+                        "manage_salaries",
+                        "generate_hr_reports"
+                    ],
+                    "crm": [
+                        "view_client",
+                        "edit_client",
+                        "delete_client",
+                        "manage_deals",
+                        "generate_crm_reports",
+                        "manage_pipelines"
+                    ]
+                },
+                "companies": [
+                    "company1",
+                    "company2"
+                ]
             },
             {
-                "user_id": "user2", 
+                "user_id": "user2",
                 "username": "regular_user",
-                "roles": ["user"],
-                "permissions": ["read", "write"]
+                "roles": {
+                    "fk": [
+                        "fk_editor"
+                    ],
+                    "hr": [
+                        "hr_viewer"
+                    ]
+                },
+                "permissions": {
+                    "fk": [
+                        "view_entry",
+                        "edit_entry",
+                        "generate_reports"
+                    ],
+                    "hr": [
+                        "view_profile",
+                        "view_contract"
+                    ]
+                },
+                "companies": [
+                    "company1"
+                ]
+            },
+            {
+                "user_id": "user3",
+                "username": "viewer_user",
+                "roles": {
+                    "fk": [
+                        "fk_viewer"
+                    ]
+                },
+                "permissions": {
+                    "fk": [
+                        "view_entry",
+                        "generate_basic_reports"
+                    ]
+                },
+                "companies": [
+                    "company2"
+                ]
             }
         ],
         "roles": {
-            "admin": ["read", "write", "delete", "manage_users", "manage_tenant"],
-            "user": ["read", "write"]
-        }
+            "fk": {
+                "fk_admin": [
+                    "view_entry",
+                    "edit_entry",
+                    "delete_entry",
+                    "manage_accounts",
+                    "generate_reports",
+                    "approve_entries",
+                    "manage_chart_of_accounts"
+                ],
+                "fk_editor": [
+                    "view_entry",
+                    "edit_entry",
+                    "generate_reports",
+                    "create_invoices",
+                    "edit_invoices"
+                ],
+                "fk_viewer": [
+                    "view_entry",
+                    "generate_basic_reports",
+                    "view_invoices"
+                ]
+            },
+            "hr": {
+                "hr_admin": [
+                    "view_profile",
+                    "edit_profile",
+                    "delete_profile",
+                    "manage_contracts",
+                    "manage_salaries",
+                    "generate_hr_reports",
+                    "manage_vacation_requests"
+                ],
+                "hr_editor": [
+                    "view_profile",
+                    "edit_profile",
+                    "edit_contract",
+                    "generate_hr_reports",
+                    "manage_vacation_requests"
+                ],
+                "hr_viewer": [
+                    "view_profile",
+                    "view_contract",
+                    "view_organizational_structure"
+                ]
+            },
+            "crm": {
+                "crm_admin": [
+                    "view_client",
+                    "edit_client",
+                    "delete_client",
+                    "manage_deals",
+                    "generate_crm_reports",
+                    "manage_pipelines",
+                    "access_analytics"
+                ],
+                "crm_editor": [
+                    "view_client",
+                    "edit_client",
+                    "manage_deals",
+                    "generate_crm_reports",
+                    "manage_activities"
+                ],
+                "crm_viewer": [
+                    "view_client",
+                    "view_deals",
+                    "view_activities",
+                    "generate_basic_crm_reports"
+                ]
+            }
+        },
+        "companies": [
+            "company1",
+            "company2"
+        ]
     },
     "tenant2": {
         "tenant_id": "tenant2",
         "tenant_name": "Test Company 2",
         "users": [
             {
-                "user_id": "user3",
-                "username": "viewer_user", 
-                "roles": ["viewer"],
-                "permissions": ["read"]
+                "user_id": "user4",
+                "username": "hr_specialist",
+                "roles": {
+                    "hr": [
+                        "hr_editor"
+                    ]
+                },
+                "permissions": {
+                    "hr": [
+                        "view_profile",
+                        "edit_profile",
+                        "edit_contract",
+                        "generate_hr_reports"
+                    ]
+                },
+                "companies": [
+                    "company3"
+                ]
             }
         ],
         "roles": {
-            "viewer": ["read"]
-        }
+            "hr": {
+                "hr_editor": [
+                    "view_profile",
+                    "edit_profile",
+                    "edit_contract",
+                    "generate_hr_reports",
+                    "manage_vacation_requests"
+                ],
+                "hr_viewer": [
+                    "view_profile",
+                    "view_contract"
+                ]
+            }
+        },
+        "companies": [
+            "company3"
+        ]
     }
-}
-
-# Synchronization status tracking
-sync_status = {
-    "last_sync": None,
-    "status": "idle",  # idle, running, success, error
-    "message": "",
-    "tenant_count": 0,
-    "errors": []
 }
 
 @app.before_request
@@ -163,9 +388,8 @@ def health_check():
     
     # Sprawdzanie zdrowia zależnych serwisów
     dependencies = {
-        "opa": check_service_health("OPA", f"{OPA_URL}"),  # OPA nie ma /health, używamy root endpoint
+        "opa": check_service_health("OPA", f"{OPA_URL}"),
         "provisioning_api": check_service_health("Provisioning API", f"{PROVISIONING_API_URL}/health"),
-        # Integration Scripts nie mają standardowego health endpoint, więc sprawdzamy tylko dostępność
     }
     
     # Sprawdzenie czy wszystkie zależności są zdrowe
@@ -180,16 +404,20 @@ def health_check():
     health_response = {
         "status": service_status,
         "service": "data-provider-api",
-        "version": "2.0.0",
+        "version": "3.0.0",  # Bumped version after cleanup
         "timestamp": datetime.datetime.utcnow().isoformat(),
         "uptime_seconds": round(metrics.get_uptime(), 2),
         "request_count": metrics.request_count,
         "last_health_check": metrics.last_health_check.isoformat() if metrics.last_health_check else None,
         "dependencies": dependencies,
         "environment": {
-            "integration_scripts_url": INTEGRATION_SCRIPTS_URL,
             "opa_url": OPA_URL,
             "provisioning_api_url": PROVISIONING_API_URL
+        },
+        "features": {
+            "model1_support": True,
+            "model2_support": MODEL2_AVAILABLE,
+            "opal_external_data_sources_ready": True
         }
     }
     
@@ -203,7 +431,7 @@ def health_check():
 @app.route("/tenants/<tenant_id>/acl", methods=["GET"])
 def get_tenant_acl(tenant_id):
     """
-    Zwraca dane ACL (Access Control List) dla określonego tenanta
+    Zwraca dane ACL (Access Control List) dla określonego tenanta (Model 1)
     
     Args:
         tenant_id (str): Identyfikator tenanta
@@ -214,53 +442,117 @@ def get_tenant_acl(tenant_id):
     logger.info(f"ACL data requested for tenant: {tenant_id}")
     
     if tenant_id not in ACL_DATA:
-        logger.warning(f"Tenant {tenant_id} not found")
+        logger.warning(f"Tenant not found: {tenant_id}")
         return jsonify({
             "error": "Tenant not found",
             "tenant_id": tenant_id,
             "available_tenants": list(ACL_DATA.keys())
         }), 404
     
-    acl_data = ACL_DATA[tenant_id].copy()
-    acl_data["retrieved_at"] = datetime.datetime.utcnow().isoformat()
+    tenant_data = ACL_DATA[tenant_id]
+    logger.info(f"Returning ACL data for tenant {tenant_id}: {len(tenant_data.get('users', []))} users")
     
-    logger.info(f"ACL data successfully retrieved for tenant: {tenant_id}")
-    return jsonify(acl_data), 200
+    return jsonify({
+        "tenant_id": tenant_id,
+        "data": tenant_data,
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "model": "1"
+    })
 
 @app.route("/tenants", methods=["GET"])
 def list_tenants():
-    """Zwraca listę dostępnych tenantów"""
+    """
+    Zwraca listę wszystkich dostępnych tenantów
+    
+    Returns:
+        JSON: Lista tenantów z podstawowymi informacjami
+    """
     logger.info("Tenants list requested")
     
-    tenant_list = []
-    for tenant_id, data in ACL_DATA.items():
-        tenant_list.append({
+    tenants_info = []
+    for tenant_id, tenant_data in ACL_DATA.items():
+        tenants_info.append({
             "tenant_id": tenant_id,
-            "tenant_name": data["tenant_name"],
-            "users_count": len(data["users"]),
-            "roles_count": len(data["roles"])
+            "tenant_name": tenant_data.get("tenant_name", "Unknown"),
+            "user_count": len(tenant_data.get("users", [])),
+            "role_count": len(tenant_data.get("roles", {}))
         })
     
     return jsonify({
-        "tenants": tenant_list,
-        "total_count": len(tenant_list),
-        "retrieved_at": datetime.datetime.utcnow().isoformat()
-    }), 200
+        "tenants": tenants_info,
+        "total_count": len(tenants_info),
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    })
+
+# Model 2 Endpoints
+if MODEL2_AVAILABLE and Model2Endpoints:
+    model2_endpoints = Model2Endpoints(MODEL2_DATA)
+    
+    @app.route("/v2/authorization", methods=["GET"])
+    def get_model2_data():
+        """Zwraca pełne dane autoryzacji Model 2"""
+        return model2_endpoints.get_authorization_data()
+    
+    @app.route("/v2/users/<user_id>/authorization", methods=["GET"])
+    def get_user_authorization(user_id):
+        """Zwraca dane autoryzacji dla konkretnego użytkownika"""
+        return model2_endpoints.get_user_authorization(user_id)
+    
+    @app.route("/v2/users/<user_id>/permissions", methods=["GET"])
+    def check_user_permissions(user_id):
+        """Sprawdza uprawnienia użytkownika z query parameters"""
+        return model2_endpoints.check_user_permissions(user_id, request.args)
+    
+    @app.route("/v2/health", methods=["GET"])
+    def model2_health_check():
+        """Health check specyficzny dla Model 2"""
+        return model2_endpoints.health_check()
+
+# ============================================================================
+# OPAL External Data Sources Integration
+# ============================================================================
+
+# Rejestruj OPAL endpoints z opal_endpoints.py
+if OPAL_ENDPOINTS_AVAILABLE:
+    register_opal_endpoints(app, MODEL2_AVAILABLE)
+    logger.info("✅ OPAL External Data Sources endpoints registered")
+else:
+    logger.warning("⚠️ OPAL endpoints not available - missing dependencies")
+
+# ============================================================================
 
 @app.route("/", methods=["GET"])
 def root():
-    """Endpoint główny z informacjami o API"""
+    """
+    Endpoint główny - informacje o API
+    """
+    logger.info("Root endpoint accessed")
+    
     return jsonify({
         "service": "Data Provider API",
-        "version": "1.0.0",
-        "description": "Standalone ACL data provider for OPA Zero Poll system",
+        "version": "3.0.0",
+        "description": "Multi-tenant ACL data provider for OPA",
+        "architecture": "OPAL External Data Sources ready",
         "endpoints": {
             "health": "/health",
+            "tenants": "/tenants",
             "tenant_acl": "/tenants/{tenant_id}/acl",
-            "list_tenants": "/tenants"
+            "model2_authorization": "/v2/authorization" if MODEL2_AVAILABLE else None,
+            "model2_user_auth": "/v2/users/{user_id}/authorization" if MODEL2_AVAILABLE else None,
+            "model2_permissions": "/v2/users/{user_id}/permissions" if MODEL2_AVAILABLE else None,
+            "model2_health": "/v2/health" if MODEL2_AVAILABLE else None,
+            "opal_data_config": "/data/config",
+            "opal_health": "/opal/health"
         },
-        "available_tenants": list(ACL_DATA.keys())
-    }), 200
+        "features": {
+            "model1_support": True,
+            "model2_support": MODEL2_AVAILABLE,
+            "opal_external_data_sources": True,
+            "webhook_support": False,  # Removed
+            "integration_scripts": False  # Removed
+        },
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    })
 
 @app.errorhandler(404)
 def not_found(error):
@@ -269,520 +561,153 @@ def not_found(error):
     return jsonify({
         "error": "Endpoint not found",
         "url": request.url,
-        "available_endpoints": ["/health", "/tenants/{tenant_id}/acl", "/tenants", "/"]
+        "available_endpoints": ["/", "/health", "/tenants", "/tenants/{tenant_id}/acl"]
     }), 404
 
 @app.errorhandler(500)
 def internal_error(error):
     """Handler dla błędów 500"""
-    logger.error(f"500 error: {str(error)}")
+    logger.error(f"500 error: {error}")
     return jsonify({
         "error": "Internal server error",
-        "message": "Something went wrong"
+        "message": "Please check server logs for details"
     }), 500
 
-def verify_github_signature(payload_body: bytes, signature_header: str) -> bool:
+# ============================================================================
+# OPAL External Data Sources Integration
+def validate_opal_jwt(token: str) -> Optional[Dict[str, Any]]:
     """
-    Weryfikuje sygnaturę GitHub webhook używając HMAC-SHA256
+    Waliduje OPAL JWT token
     
     Args:
-        payload_body: Raw bytes payload from GitHub
-        signature_header: X-Hub-Signature-256 header value
+        token: JWT token string
         
     Returns:
-        bool: True jeśli sygnatura jest poprawna, False w przeciwnym razie
+        Dict z claims lub None jeśli token nieprawidłowy
     """
-    if not signature_header:
-        logger.warning("Missing GitHub signature header")
-        return False
+    if not OPAL_JWT_AVAILABLE:
+        logger.error("OPAL JWT validation not available - missing dependencies")
+        return None
+        
+    if not OPAL_PUBLIC_KEY:
+        logger.error("OPAL_PUBLIC_KEY not configured")
+        return None
     
-    # Signature header format: "sha256=<signature>"
     try:
-        algorithm, signature = signature_header.split("=", 1)
-        if algorithm != "sha256":
-            logger.warning(f"Unsupported signature algorithm: {algorithm}")
-            return False
-    except ValueError:
-        logger.warning("Invalid signature header format")
-        return False
-    
-    # Oblicz HMAC-SHA256 z secret key
-    expected_signature = hmac.new(
-        WEBHOOK_SECRET.encode(),
-        payload_body,
-        hashlib.sha256
-    ).hexdigest()
-    
-    # Porównaj sygnatury (secure comparison)
-    is_valid = hmac.compare_digest(signature, expected_signature)
-    
-    if not is_valid:
-        logger.warning("GitHub webhook signature verification failed")
-    
-    return is_valid
+        # Sprawdź czy to dev token OPAL
+        if token == "THIS_IS_A_DEV_SECRET":
+            logger.info("🔧 Using OPAL dev token - generating default config")
+            # Generuj domyślną konfigurację dla dev mode
+            default_claims = {
+                "client_id": "opal-dev-client",
+                "tenant_id": "acme",  # Domyślny tenant dla dev mode
+                "sub": "opal-dev-client",
+                "iss": "opal-dev",
+                "aud": "opal-dev"
+            }
+            
+            try:
+                data_source_config = get_data_source_config_for_client(default_claims)
+                logger.info("✅ Returning dev DataSourceConfig for OPAL dev token")
+                return jsonify(data_source_config), 200
+                
+            except Exception as e:
+                logger.error(f"❌ Error generating dev DataSourceConfig: {e}")
+                return jsonify({
+                    "error": "Internal server error",
+                    "details": "Failed to generate dev data source configuration"
+                }), 500
+        
+        # Dekoduj public key
+        public_key = serialization.load_pem_public_key(
+            OPAL_PUBLIC_KEY.encode('utf-8')
+        )
+        
+        # Waliduj JWT
+        payload = jwt.decode(
+            token,
+            public_key,
+            algorithms=[OPAL_JWT_ALGORITHM],
+            audience=OPAL_JWT_AUDIENCE,
+            issuer=OPAL_JWT_ISSUER
+        )
+        
+        logger.info(f"✅ OPAL JWT validated successfully for client: {payload.get('client_id', 'unknown')}")
+        return payload
+        
+    except jwt.ExpiredSignatureError:
+        logger.error("❌ OPAL JWT token expired")
+        return None
+    except jwt.InvalidTokenError as e:
+        logger.error(f"❌ OPAL JWT token invalid: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ OPAL JWT validation error: {e}")
+        return None
 
-def process_policy_changes(event_data: Dict[str, Any]) -> Dict[str, Any]:
+def get_data_source_config_for_client(client_claims: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Przetwarza zmiany w politykach z GitHub webhook
+    Generuje DataSourceConfig dla konkretnego OPAL Client na podstawie claims
     
     Args:
-        event_data: Parsed GitHub webhook payload
+        client_claims: Claims z JWT tokenu OPAL Client
         
     Returns:
-        Dict z informacjami o przetworzonych zmianach
+        DataSourceConfig zgodny z OPAL schema
     """
-    result = {
-        "processed_files": [],
-        "policy_changes_detected": False,
-        "action_required": False
+    # Wyciągnij identyfikator klienta z claims
+    client_id = client_claims.get('client_id', 'unknown')
+    tenant_id = client_claims.get('tenant_id', client_id)  # Fallback do client_id
+    
+    logger.info(f"Generating DataSourceConfig for client_id: {client_id}, tenant_id: {tenant_id}")
+    
+    # Bazowy URL dla tego Data Provider API
+    base_url = os.environ.get("DATA_PROVIDER_BASE_URL", "http://data-provider-api:8110")
+    
+    # Konfiguracja dla Model 1 (legacy ACL)
+    model1_entries = [
+        {
+            "url": f"{base_url}/tenants/{tenant_id}/acl",
+            "dst_path": f"/acl/{tenant_id}",
+            "topics": [f"acl_data/{tenant_id}"],
+            "config": {
+                "headers": {
+                    "Accept": "application/json",
+                    "User-Agent": "OPAL-Client"
+                }
+            }
+        }
+    ]
+    
+    # Konfiguracja dla Model 2 (jeśli dostępne)
+    model2_entries = []
+    if MODEL2_AVAILABLE:
+        model2_entries = [
+            {
+                "url": f"{base_url}/v2/authorization",
+                "dst_path": "/authorization",
+                "topics": [f"authorization_data/{tenant_id}"],
+                "config": {
+                    "headers": {
+                        "Accept": "application/json",
+                        "User-Agent": "OPAL-Client",
+                        "X-Tenant-ID": tenant_id
+                    }
+                }
+            }
+        ]
+    
+    # Połącz wszystkie entries
+    all_entries = model1_entries + model2_entries
+    
+    data_source_config = {
+        "entries": all_entries
     }
     
-    # Sprawdź czy to push event
-    if event_data.get("zen"):  # ping event
-        result["event_type"] = "ping"
-        return result
-        
-    commits = event_data.get("commits", [])
-    ref = event_data.get("ref", "")
-    repository = event_data.get("repository", {}).get("name", "unknown")
-    
-    result["event_type"] = "push"
-    result["repository"] = repository
-    result["ref"] = ref
-    result["commits_count"] = len(commits)
-    
-    # Filtruj tylko główne branche (main, master)
-    main_branches = ["refs/heads/main", "refs/heads/master"]
-    if ref not in main_branches:
-        logger.info(f"Ignoring push to branch {ref} (not main branch)")
-        result["ignored_branch"] = True
-        return result
-    
-    # Sprawdź pliki polityk w commit-ach
-    policy_extensions = [".rego", ".policy"]
-    policy_paths = ["policies/", "policy/", "opa/"]
-    
-    for commit in commits:
-        commit_id = commit.get("id", "unknown")[:8]
-        added_files = commit.get("added", [])
-        modified_files = commit.get("modified", []) 
-        removed_files = commit.get("removed", [])
-        
-        all_files = added_files + modified_files + removed_files
-        
-        for file_path in all_files:
-            # Sprawdź czy to plik polityki
-            is_policy_file = (
-                any(file_path.endswith(ext) for ext in policy_extensions) or
-                any(path in file_path for path in policy_paths)
-            )
-            
-            if is_policy_file:
-                result["processed_files"].append({
-                    "file": file_path,
-                    "commit": commit_id,
-                    "action": "added" if file_path in added_files else 
-                             "modified" if file_path in modified_files else "removed"
-                })
-                result["policy_changes_detected"] = True
-                result["action_required"] = True
-    
-    return result
-
-@app.route("/webhook/policy-update", methods=["POST"])
-def github_webhook():
-    """
-    Endpoint do odbierania GitHub webhook events dla aktualizacji polityk
-    
-    Obsługuje:
-    - Weryfikację sygnatur GitHub
-    - Push events z zmianami w politykach  
-    - Logging wszystkich event-ów
-    - Filtering main branch changes only
-    """
-    logger.info("GitHub webhook received")
-    
-    # Pobierz raw payload i headers
-    payload_body = request.get_data()
-    signature_header = request.headers.get("X-Hub-Signature-256", "")
-    event_type = request.headers.get("X-GitHub-Event", "unknown")
-    delivery_id = request.headers.get("X-GitHub-Delivery", "unknown")
-    
-    logger.info(f"Webhook event: {event_type}, delivery: {delivery_id}")
-    
-    # Weryfikuj sygnaturę GitHub (tymczasowo wyłączone dla testów OPAL)
-    # TODO: Przywrócić weryfikację po skonfigurowaniu OPAL
-    # if not verify_github_signature(payload_body, signature_header):
-    #     logger.error("GitHub webhook signature verification failed")
-    #     return jsonify({
-    #         "error": "Unauthorized",
-    #         "message": "Invalid signature"
-    #     }), 401
-    logger.info("GitHub signature verification temporarily disabled for OPAL testing")
-    
-    # Parse JSON payload
-    try:
-        webhook_data = request.get_json()
-        if not webhook_data:
-            logger.error("Empty or invalid JSON payload")
-            return jsonify({
-                "error": "Bad Request", 
-                "message": "Invalid JSON payload"
-            }), 400
-    except Exception as e:
-        logger.error(f"Failed to parse webhook payload: {e}")
-        return jsonify({
-            "error": "Bad Request",
-            "message": "Failed to parse JSON"
-        }), 400
-    
-    # Przetwórz event lokalnie
-    try:
-        processing_result = process_policy_changes(webhook_data)
-        
-        # Log wyniki lokalnego przetwarzania
-        if processing_result.get("policy_changes_detected"):
-            logger.info(f"Policy changes detected: {len(processing_result['processed_files'])} files affected")
-            for file_info in processing_result["processed_files"]:
-                logger.info(f"  {file_info['action']}: {file_info['file']} (commit: {file_info['commit']})")
-        else:
-            logger.info("No policy changes detected in webhook")
-        
-        # NOWE: Przekieruj webhook do OPAL Server
-        opal_webhook_result = forward_webhook_to_opal(webhook_data, event_type, delivery_id)
-        
-        # Przygotuj response
-        response_data = {
-            "status": "success",
-            "message": "Webhook processed and forwarded to OPAL Server",
-            "event_type": event_type,
-            "delivery_id": delivery_id,
-            "timestamp": datetime.datetime.utcnow().isoformat(),
-            "processing_result": processing_result,
-            "opal_forwarding": opal_webhook_result
-        }
-        
-        # Oznacz czy potrzebna akcja (synchronizacja z OPA)
-        if processing_result.get("action_required"):
-            response_data["action_required"] = True
-            response_data["next_step"] = "Policy synchronization handled by OPAL Server"
-            
-        logger.info("GitHub webhook processed and forwarded to OPAL Server successfully")
-        return jsonify(response_data), 200
-        
-    except Exception as e:
-        logger.error(f"Error processing webhook: {e}")
-        return jsonify({
-            "error": "Internal Server Error",
-            "message": "Failed to process webhook",
-            "delivery_id": delivery_id
-        }), 500
-
-def forward_webhook_to_opal(webhook_data: Dict[str, Any], event_type: str, delivery_id: str) -> Dict[str, Any]:
-    """
-    Przekierowuje GitHub webhook do OPAL Server
-    
-    Args:
-        webhook_data: Dane webhook z GitHub
-        event_type: Typ eventu GitHub
-        delivery_id: ID dostawy webhook
-        
-    Returns:
-        Dict z wynikiem przekierowania
-    """
-    try:
-        # URL OPAL Server webhook endpoint
-        opal_webhook_url = "http://opal-server:7002/webhook"
-        
-        # Przygotuj headers dla OPAL Server
-        headers = {
-            'Content-Type': 'application/json',
-            'X-GitHub-Event': event_type,
-            'X-GitHub-Delivery': delivery_id,
-            'User-Agent': 'Data-Provider-API-Forwarder/1.0'
-        }
-        
-        logger.info(f"Forwarding webhook to OPAL Server: {event_type} (delivery: {delivery_id})")
-        
-        # Wyślij webhook do OPAL Server
-        response = requests.post(
-            opal_webhook_url,
-            json=webhook_data,
-            headers=headers,
-            timeout=10  # Krótszy timeout dla webhook forwarding
-        )
-        
-        if response.status_code == 200:
-            logger.info(f"Webhook successfully forwarded to OPAL Server: {delivery_id}")
-            return {
-                "success": True,
-                "status_code": response.status_code,
-                "message": "Webhook forwarded to OPAL Server successfully",
-                "opal_response": response.json() if response.content else None
-            }
-        else:
-            logger.warning(f"OPAL Server returned non-200 status: {response.status_code}")
-            return {
-                "success": False,
-                "status_code": response.status_code,
-                "message": f"OPAL Server returned HTTP {response.status_code}",
-                "error": response.text[:200] if response.text else "No response body"
-            }
-            
-    except requests.exceptions.Timeout:
-        logger.error(f"Timeout forwarding webhook to OPAL Server: {delivery_id}")
-        return {
-            "success": False,
-            "error": "timeout",
-            "message": "Timeout forwarding webhook to OPAL Server"
-        }
-    except requests.exceptions.ConnectionError:
-        logger.error(f"Connection error forwarding webhook to OPAL Server: {delivery_id}")
-        return {
-            "success": False,
-            "error": "connection_error",
-            "message": "Cannot connect to OPAL Server"
-        }
-    except Exception as e:
-        logger.error(f"Error forwarding webhook to OPAL Server: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "message": "Unexpected error forwarding webhook to OPAL Server"
-        }
-
-def call_integration_script(action: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
-    """
-    Wywołuje Integration Script przez HTTP request
-    
-    Args:
-        action: Akcja do wykonania ('sync_all', 'sync_tenant', 'health_check')
-        tenant_id: ID tenanta (wymagane dla 'sync_tenant')
-        
-    Returns:
-        Dict z wynikiem operacji
-    """
-    try:
-        # URL Integration Scripts API (zakładamy że ma REST endpoint)
-        integration_url = f"{INTEGRATION_SCRIPTS_URL}/api"
-        
-        payload = {
-            "action": action,
-            "timestamp": datetime.datetime.utcnow().isoformat()
-        }
-        
-        if tenant_id:
-            payload["tenant_id"] = tenant_id
-            
-        logger.info(f"Calling Integration Script: {action} for tenant: {tenant_id or 'all'}")
-        
-        response = requests.post(
-            f"{integration_url}/execute",
-            json=payload,
-            headers={'Content-Type': 'application/json'},
-            timeout=30  # Longer timeout for sync operations
-        )
-        
-        if response.status_code == 200:
-            result = response.json()
-            logger.info(f"Integration Script call successful: {action}")
-            return {
-                "success": True,
-                "result": result,
-                "message": f"Successfully executed {action}"
-            }
-        else:
-            logger.error(f"Integration Script call failed: {response.status_code}")
-            return {
-                "success": False,
-                "error": f"HTTP {response.status_code}",
-                "message": f"Failed to execute {action}"
-            }
-            
-    except requests.exceptions.Timeout:
-        logger.error(f"Integration Script call timeout: {action}")
-        return {
-            "success": False,
-            "error": "timeout",
-            "message": f"Timeout executing {action}"
-        }
-    except requests.exceptions.ConnectionError:
-        logger.error(f"Integration Script connection error: {action}")
-        return {
-            "success": False,
-            "error": "connection_error", 
-            "message": f"Cannot connect to Integration Scripts"
-        }
-    except Exception as e:
-        logger.error(f"Integration Script call error: {e}")
-        return {
-            "success": False,
-            "error": str(e),
-            "message": f"Unexpected error executing {action}"
-        }
-
-@app.route("/sync/trigger", methods=["POST"])
-def trigger_full_sync():
-    """
-    Ręcznie uruchamia pełną synchronizację wszystkich tenantów
-    """
-    global sync_status
-    
-    logger.info("Manual full synchronization triggered")
-    
-    # Sprawdź czy synchronizacja już trwa
-    if sync_status["status"] == "running":
-        return jsonify({
-            "error": "Synchronization already in progress",
-            "current_status": sync_status
-        }), 409
-    
-    # Ustaw status na running
-    sync_status.update({
-        "status": "running",
-        "message": "Full synchronization in progress",
-        "last_sync": datetime.datetime.utcnow().isoformat(),
-        "errors": []
-    })
-    
-    try:
-        # Wywołaj Integration Script
-        result = call_integration_script("sync_all")
-        
-        if result["success"]:
-            sync_status.update({
-                "status": "success",
-                "message": "Full synchronization completed successfully",
-                "tenant_count": result.get("result", {}).get("tenant_count", 0)
-            })
-            
-            return jsonify({
-                "message": "Full synchronization completed successfully",
-                "status": sync_status,
-                "result": result["result"]
-            }), 200
-        else:
-            sync_status.update({
-                "status": "error",
-                "message": result["message"],
-                "errors": [result.get("error", "Unknown error")]
-            })
-            
-            return jsonify({
-                "error": "Synchronization failed",
-                "status": sync_status,
-                "details": result
-            }), 500
-            
-    except Exception as e:
-        logger.error(f"Unexpected error during full sync: {e}")
-        sync_status.update({
-            "status": "error",
-            "message": f"Unexpected error: {str(e)}",
-            "errors": [str(e)]
-        })
-        
-        return jsonify({
-            "error": "Synchronization failed",
-            "status": sync_status
-        }), 500
-
-@app.route("/sync/tenant/<tenant_id>", methods=["POST"])
-def trigger_tenant_sync(tenant_id):
-    """
-    Uruchamia synchronizację dla konkretnego tenanta
-    
-    Args:
-        tenant_id (str): ID tenanta do synchronizacji
-    """
-    logger.info(f"Manual tenant synchronization triggered for: {tenant_id}")
-    
-    if not tenant_id:
-        return jsonify({
-            "error": "tenant_id is required"
-        }), 400
-    
-    try:
-        # Wywołaj Integration Script dla konkretnego tenanta
-        result = call_integration_script("sync_tenant", tenant_id)
-        
-        if result["success"]:
-            return jsonify({
-                "message": f"Tenant {tenant_id} synchronization completed successfully",
-                "tenant_id": tenant_id,
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "result": result["result"]
-            }), 200
-        else:
-            return jsonify({
-                "error": f"Tenant {tenant_id} synchronization failed",
-                "tenant_id": tenant_id,
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "details": result
-            }), 500
-            
-    except Exception as e:
-        logger.error(f"Unexpected error during tenant sync for {tenant_id}: {e}")
-        return jsonify({
-            "error": f"Tenant {tenant_id} synchronization failed",
-            "tenant_id": tenant_id,
-            "timestamp": datetime.datetime.utcnow().isoformat(),
-            "details": str(e)
-        }), 500
-
-@app.route("/sync/status", methods=["GET"])
-def get_sync_status():
-    """
-    Zwraca status ostatniej synchronizacji
-    """
-    logger.info("Sync status requested")
-    
-    return jsonify({
-        "sync_status": sync_status,
-        "timestamp": datetime.datetime.utcnow().isoformat(),
-        "service": "data-provider-api"
-    }), 200
-
-@app.route("/sync/health", methods=["GET"])
-def sync_health_check():
-    """
-    Sprawdza czy Integration Scripts są dostępne
-    """
-    logger.info("Sync health check requested")
-    
-    try:
-        result = call_integration_script("health_check")
-        
-        if result["success"]:
-            return jsonify({
-                "status": "healthy",
-                "integration_scripts": "available",
-                "message": "Integration Scripts are responding",
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "details": result["result"]
-            }), 200
-        else:
-            return jsonify({
-                "status": "unhealthy",
-                "integration_scripts": "unavailable", 
-                "message": "Integration Scripts are not responding",
-                "timestamp": datetime.datetime.utcnow().isoformat(),
-                "error": result.get("error", "Unknown error")
-            }), 503
-            
-    except Exception as e:
-        logger.error(f"Sync health check error: {e}")
-        return jsonify({
-            "status": "unhealthy",
-            "integration_scripts": "error",
-            "message": "Error checking Integration Scripts",
-            "timestamp": datetime.datetime.utcnow().isoformat(),
-            "error": str(e)
-        }), 503
+    logger.info(f"Generated {len(all_entries)} data source entries for client {client_id}")
+    return data_source_config
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8110))
-    debug = os.environ.get("DEBUG", "false").lower() == "true"
-    
-    logger.info(f"Starting Data Provider API on port {port}")
-    app.run(host="0.0.0.0", port=port, debug=debug) 
+    logger.info("🚀 Starting Data Provider API...")
+    logger.info(f"Model 2 support: {MODEL2_AVAILABLE}")
+    app.run(host="0.0.0.0", port=8110, debug=False)

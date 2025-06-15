@@ -1,0 +1,187 @@
+{
+  "roles": {
+    "user42": {
+      "fk": ["fk_admin"],
+      "hr": ["hr_viewer"]
+    },
+    "user99": {
+      "hr": ["hr_editor"]
+    },
+    "user150": {
+      "fk": ["fk_viewer"],
+      "crm": ["crm_editor"]
+    },
+    "user200": {
+      "fk": ["fk_editor"],
+      "hr": ["hr_editor"],
+      "crm": ["crm_admin"]
+    },
+    "user300": {
+      "fk": ["fk_viewer"]
+    }
+  },
+  "access": {
+    "user42": {
+      "tenant125": ["company1", "company2"]
+    },
+    "user99": {
+      "tenant125": ["company7", "company8"]
+    },
+    "user150": {
+      "tenant125": ["company1", "company7"],
+      "tenant200": ["company20"]
+    },
+    "user200": {
+      "tenant125": ["company1", "company2", "company7", "company8"],
+      "tenant200": ["company20", "company21"]
+    },
+    "user300": {
+      "tenant125": ["company1"]
+    }
+  },
+  "teams": {
+    "kadry": {
+      "name": "Zespół Kadr",
+      "description": "Zespół HR obsługujący zarządzanie zasobami ludzkimi",
+      "roles": {
+        "hr": ["hr_editor", "hr_admin"],
+        "fk": ["fk_viewer"]
+      },
+      "companies": ["company7", "company8", "company12"],
+      "tenant_id": "tenant125"
+    },
+    "księgowi_abc": {
+      "name": "Księgowi ABC Sp. z o.o.",
+      "description": "Zespół księgowy obsługujący księgowość firmy ABC",
+      "roles": {
+        "fk": ["fk_admin"],
+        "hr": ["hr_viewer"]
+      },
+      "companies": ["company1"],
+      "tenant_id": "tenant125"
+    },
+    "sprzedaż_region_północ": {
+      "name": "Sprzedaż Region Północ",
+      "description": "Zespół sprzedażowy obsługujący region północny",
+      "roles": {
+        "crm": ["crm_editor"],
+        "fk": ["fk_viewer"]
+      },
+      "companies": ["company2", "company7"],
+      "tenant_id": "tenant125"
+    },
+    "admin_zespół": {
+      "name": "Administratorzy Systemu",
+      "description": "Zespół administratorów z pełnymi uprawnieniami",
+      "roles": {
+        "fk": ["fk_admin"],
+        "hr": ["hr_admin"],
+        "crm": ["crm_admin"]
+      },
+      "companies": ["company1", "company2", "company7", "company8"],
+      "tenant_id": "tenant125"
+    },
+    "biuro_rachunkowe_xyz": {
+      "name": "Biuro Rachunkowe XYZ",
+      "description": "Zewnętrzne biuro rachunkowe obsługujące tenant200",
+      "roles": {
+        "fk": ["fk_admin"],
+        "hr": ["hr_viewer"]
+      },
+      "companies": ["company20", "company21"],
+      "tenant_id": "tenant200"
+    }
+  },
+  "memberships": {
+    "user99": ["kadry"],
+    "user42": ["księgowi_abc"],
+    "user150": ["kadry", "sprzedaż_region_północ"],
+    "user200": ["admin_zespół"],
+    "user300": ["księgowi_abc"]
+  },
+  "permissions": {
+    "fk": {
+      "fk_admin": [
+        "view_entry",
+        "edit_entry", 
+        "delete_entry",
+        "manage_accounts",
+        "generate_reports",
+        "approve_entries",
+        "manage_chart_of_accounts",
+        "access_bank_statements",
+        "manage_vat_declarations",
+        "export_data"
+      ],
+      "fk_editor": [
+        "view_entry",
+        "edit_entry",
+        "generate_reports",
+        "access_bank_statements",
+        "create_invoices",
+        "edit_invoices"
+      ],
+      "fk_viewer": [
+        "view_entry",
+        "generate_basic_reports",
+        "view_invoices",
+        "view_bank_statements"
+      ]
+    },
+    "hr": {
+      "hr_admin": [
+        "view_profile",
+        "edit_profile",
+        "delete_profile",
+        "manage_contracts",
+        "manage_salaries",
+        "generate_hr_reports",
+        "manage_vacation_requests",
+        "access_personal_data",
+        "manage_organizational_structure",
+        "export_hr_data"
+      ],
+      "hr_editor": [
+        "view_profile",
+        "edit_profile",
+        "edit_contract",
+        "generate_hr_reports",
+        "manage_vacation_requests",
+        "view_salaries"
+      ],
+      "hr_viewer": [
+        "view_profile",
+        "view_contract",
+        "view_organizational_structure"
+      ]
+    },
+    "crm": {
+      "crm_admin": [
+        "view_client",
+        "edit_client",
+        "delete_client",
+        "manage_deals",
+        "generate_crm_reports",
+        "manage_pipelines",
+        "access_analytics",
+        "manage_team_performance",
+        "export_crm_data",
+        "manage_client_segments"
+      ],
+      "crm_editor": [
+        "view_client",
+        "edit_client",
+        "manage_deals",
+        "generate_crm_reports",
+        "manage_activities",
+        "view_analytics"
+      ],
+      "crm_viewer": [
+        "view_client",
+        "view_deals",
+        "view_activities",
+        "generate_basic_crm_reports"
+      ]
+    }
+  }
+} 
