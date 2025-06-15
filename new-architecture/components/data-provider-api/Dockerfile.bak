@@ -15,10 +15,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Skopiuj kod aplikacji
 COPY app.py .
 COPY opal_endpoints.py .
-COPY database_integration.py .
-COPY shared/ ./shared/
 
-# Skopiuj pliki Model 2
+# Skopiuj pliki Model 2 (jeśli istnieją)
 COPY model2*.py ./
 COPY model2-sample-data.json ./
 

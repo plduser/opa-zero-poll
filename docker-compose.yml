@@ -1,6 +1,30 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database - centralna baza danych dla Model 2
+  postgres-db:
+    image: postgres:13
+    container_name: postgres-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=opa_user
+      - POSTGRES_PASSWORD=opa_password
+      - POSTGRES_DB=opa_zero_poll
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./new-architecture/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./new-architecture/database/seed_data.sql:/docker-entrypoint-initdb.d/02-seed_data.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opa_user -d opa_zero_poll"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
   # Data Provider API - symuluje zewnętrzny system ACL
   data-provider-api:
     build: ./new-architecture/components/data-provider-api
@@ -15,12 +39,21 @@ services:
       - OPA_URL=http://opa-standalone-new:8181
       - PROVISIONING_API_URL=http://provisioning-api-new:8010
       - DISABLE_JWT_VALIDATION=true
+      # Database connection
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=opa_user
+      - DB_PASSWORD=opa_password
+      - DB_NAME=opa_zero_poll
+    depends_on:
+      postgres-db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8110/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 15s
     restart: unless-stopped
     networks:
       - new-arch-network
@@ -35,15 +68,24 @@ services:
     environment:
       - PORT=8010
       - DEBUG=false
-      - DATABASE_PATH=/app/data/tenants.db
-    volumes:
-      - provisioning_data:/app/data
+      # Database connection (replacing SQLite)
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=opa_user
+      - DB_PASSWORD=opa_password
+      - DB_NAME=opa_zero_poll
+      # OPAL integration
+      - OPAL_SERVER_URL=http://opal-server:7002
+      - DATA_PROVIDER_API_URL=http://data-provider-api:8110
+    depends_on:
+      postgres-db:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 5s
+      start_period: 15s
     restart: unless-stopped
     networks:
       - new-arch-network
@@ -184,11 +226,12 @@ services:
       - new-arch-network
 
 volumes:
+  postgres_data:
+    driver: local
   provisioning_data:
     driver: local
   redis_data:
     driver: local
-
 
 networks:
   new-arch-network:
