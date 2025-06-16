@@ -206,7 +206,7 @@ def test_provisioning_api(tenant_id, tenant_name, admin_email, admin_name):
             timeout=15
         )
         
-        if response.status_code == 200:
+        if response.status_code == 201:
             result = response.json()
             structure = result.get('structure', {})
             log(f"✅ Provisioning API - Kompletna struktura utworzona dla {tenant_id}")
@@ -356,7 +356,7 @@ def main():
     # Dane testowe - symulacja rejestracji przez B2C/Auth0
     tenant_id = f"test_tenant_{int(time.time())}"
     tenant_name = "Test Company Sp. z o.o."
-    admin_email = "admin@testcompany.pl"
+    admin_email = f"admin{int(time.time())}@testcompany.pl"
     admin_name = "Jan Testowy"
     
     log(f"📋 Dane testowe:")

@@ -74,6 +74,28 @@ CREATE TABLE roles (
     UNIQUE(app_id, role_name)
 );
 
+-- Application Profiles - Profile dla aplikacji (koncepcja Portal Symfonia)
+CREATE TABLE application_profiles (
+    profile_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    app_id VARCHAR(255) NOT NULL REFERENCES applications(app_id) ON DELETE CASCADE,
+    profile_name VARCHAR(255) NOT NULL,
+    description TEXT,
+    is_default BOOLEAN DEFAULT FALSE,
+    metadata JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    UNIQUE(app_id, profile_name)
+);
+
+-- Profile_Roles - mapowanie Profili na role (jeden Profil może mapować na wiele ról)
+CREATE TABLE profile_roles (
+    profile_id UUID NOT NULL REFERENCES application_profiles(profile_id) ON DELETE CASCADE,
+    role_id UUID NOT NULL REFERENCES roles(role_id) ON DELETE CASCADE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    PRIMARY KEY (profile_id, role_id)
+);
+
 -- Permissions - uprawnienia w aplikacjach
 CREATE TABLE permissions (
     permission_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -112,6 +134,18 @@ CREATE TABLE user_roles (
     expires_at TIMESTAMP WITH TIME ZONE,
     
     PRIMARY KEY (user_id, role_id, tenant_id)
+);
+
+-- User_Application_Profiles - przypisania Profili aplikacji użytkownikom (Portal Symfonia)
+CREATE TABLE user_application_profiles (
+    user_id VARCHAR(255) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    profile_id UUID NOT NULL REFERENCES application_profiles(profile_id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    assigned_by VARCHAR(255),
+    expires_at TIMESTAMP WITH TIME ZONE,
+    
+    PRIMARY KEY (user_id, profile_id, tenant_id)
 );
 
 -- User_Access - dostęp użytkowników do firm
@@ -199,6 +233,14 @@ CREATE INDEX idx_roles_app_id ON roles(app_id);
 CREATE INDEX idx_permissions_app_id ON permissions(app_id);
 CREATE INDEX idx_role_permissions_role_id ON role_permissions(role_id);
 CREATE INDEX idx_role_permissions_permission_id ON role_permissions(permission_id);
+
+-- Application Profile indexes
+CREATE INDEX idx_application_profiles_app_id ON application_profiles(app_id);
+CREATE INDEX idx_profile_roles_profile_id ON profile_roles(profile_id);
+CREATE INDEX idx_profile_roles_role_id ON profile_roles(role_id);
+CREATE INDEX idx_user_application_profiles_user_id ON user_application_profiles(user_id);
+CREATE INDEX idx_user_application_profiles_tenant_id ON user_application_profiles(tenant_id);
+CREATE INDEX idx_user_application_profiles_profile_id ON user_application_profiles(profile_id);
 
 -- Team relationship indexes
 CREATE INDEX idx_teams_parent_team_id ON teams(parent_team_id);
@@ -323,6 +365,9 @@ COMMENT ON TABLE teams IS 'Teams for REBAC-style group management';
 COMMENT ON TABLE team_memberships IS 'User membership in teams';
 COMMENT ON TABLE team_roles IS 'Role assignments to teams (inherited by members)';
 COMMENT ON TABLE team_companies IS 'Company access assignments to teams (inherited by members)';
-
-COMMENT ON VIEW user_effective_permissions IS 'Unified view of user permissions from direct roles and team memberships';
-COMMENT ON VIEW user_effective_access IS 'Unified view of user company access from direct assignments and team memberships'; 
+COMMENT ON TABLE application_profiles IS 'Application profiles for Portal Symfonia - abstraction layer between UI and detailed roles';
+COMMENT ON TABLE profile_roles IS 'Mapping of profiles to roles - one profile can map to multiple roles';
+COMMENT ON TABLE user_application_profiles IS 'Profile assignments to users within tenants (Portal Symfonia concept)'; -- Additional comments for Portal Symfonia Profile concept
+COMMENT ON TABLE application_profiles IS 'Application profiles for Portal Symfonia - abstraction layer between UI and detailed roles';
+COMMENT ON TABLE profile_roles IS 'Mapping of profiles to roles - one profile can map to multiple roles';
+COMMENT ON TABLE user_application_profiles IS 'Profile assignments to users within tenants (Portal Symfonia concept)';
