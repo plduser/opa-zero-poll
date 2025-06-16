@@ -1,0 +1,9 @@
+# Import i rejestracja Users Management endpoints
+try:
+    from users_endpoints import register_users_endpoints
+    register_users_endpoints(app)
+    logger.info("✅ Users management endpoints registered")
+    USERS_ENDPOINTS_AVAILABLE = True
+except ImportError as e:
+    logger.warning(f"⚠️ Users management endpoints not available: {e}")
+    USERS_ENDPOINTS_AVAILABLE = False 
