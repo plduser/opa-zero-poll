@@ -16,6 +16,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 COPY opal_endpoints.py .
 COPY database_integration.py .
+COPY users_endpoints.py .
+COPY companies_endpoints.py .
+COPY profiles_endpoints.py .
+COPY user_profiles_endpoints.py .
 COPY shared/ ./shared/
 
 # Skopiuj pliki Model 2
