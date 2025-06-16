@@ -72,11 +72,11 @@ W **dużych środowiskach enterprise z tysiącami tenantów**, standardowe mecha
 ### Tenant Isolation Mechanizm
 
 **OPAL External Data Sources** z **single topic multi-tenant** i **hierarchiczną izolacją**:
-1. **OPAL Client** wysyła JWT token do Data Provider API
-2. **Data Provider API** waliduje token i ekstraktuje `tenant_id`
-3. **Per-tenant DataSourceConfig** response z single topic `multi_tenant_data`
-4. **Hierarchiczna izolacja** w dst_path: `/acl/{tenant_id}`
-5. **OPA** otrzymuje dane w oddzielnych ścieżkach per tenant
+1. **Provisioning API** powiadamia OPAL Server o zmianach tenantów
+2. **OPAL Server** publikuje event na single topic `multi_tenant_data`  
+3. **OPAL Client** otrzymuje event i fetchuje dane z Data Provider API
+4. **Separacja tenantów** przez różne URL endpoints i `dst_path`: `/acl/{tenant_id}`
+5. **OPA** otrzymuje dane w oddzielonych ścieżkach per tenant z pełną izolacją
 
 ### Architektura Flow
 
@@ -93,8 +93,8 @@ graph TD
     F --> I["Authorization Decision"]
     
     B -.->|"OPAL Update"| D
-    E -.->|"JWT + tenant_id"| C
-    C -.->|"DataSourceConfig"| E
+    E -.->|"Fetch tenant data"| C
+    C -.->|"Tenant-specific data"| E
 ```
 
 **Kluczowe przepływy:**
