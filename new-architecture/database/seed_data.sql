@@ -60,6 +60,37 @@ INSERT INTO roles (app_id, role_name, description, is_system_role) VALUES
 ('crm', 'crm_editor', 'Edytor modułu CRM - może edytować klientów', true),
 ('crm', 'crm_viewer', 'Przeglądający modułu CRM - tylko odczyt', true);
 
+-- Insert Application Profiles (Portal Symfonia concept)
+INSERT INTO application_profiles (app_id, profile_name, description, is_default) VALUES
+-- FK profiles
+('fk', 'Administrator', 'Pełne uprawnienia księgowe - zarządzanie wszystkimi funkcjami', false),
+('fk', 'Księgowa', 'Standardowe uprawnienia księgowe - edycja wpisów i raportów', true),
+('fk', 'Użytkownik', 'Podstawowe uprawnienia - przeglądanie i podstawowe raporty', false),
+-- HR profiles  
+('hr', 'Administrator', 'Pełne uprawnienia HR - zarządzanie wszystkimi funkcjami', false),
+('hr', 'Specjalista HR', 'Standardowe uprawnienia HR - edycja profili i umów', true),
+('hr', 'Użytkownik', 'Podstawowe uprawnienia - przeglądanie struktury organizacyjnej', false),
+-- CRM profiles
+('crm', 'Administrator', 'Pełne uprawnienia CRM - zarządzanie wszystkimi funkcjami', false),
+('crm', 'Sprzedawca', 'Standardowe uprawnienia sprzedażowe - zarządzanie klientami i transakcjami', true),
+('crm', 'Użytkownik', 'Podstawowe uprawnienia - przeglądanie klientów i raportów', false),
+-- eDokumenty profiles (dla Portal Symfonia)
+('edokumenty', 'Administrator', 'Pełne uprawnienia eDokumenty - zarządzanie wszystkimi funkcjami', false),
+('edokumenty', 'Księgowa', 'Standardowe uprawnienia księgowe w eDokumenty', true),
+('edokumenty', 'Użytkownik', 'Podstawowe uprawnienia - przeglądanie dokumentów', false),
+-- eBiuro profiles (dla Portal Symfonia)
+('ebiuro', 'Administrator', 'Pełne uprawnienia eBiuro - zarządzanie wszystkimi funkcjami', false),
+('ebiuro', 'Specjalista', 'Standardowe uprawnienia eBiuro', true),
+('ebiuro', 'Użytkownik', 'Podstawowe uprawnienia eBiuro', false),
+-- KSEF profiles (dla Portal Symfonia)
+('ksef', 'Administrator', 'Pełne uprawnienia KSEF - zarządzanie wszystkimi funkcjami', false),
+('ksef', 'Edytor', 'Standardowe uprawnienia KSEF - edycja dokumentów', true),
+('ksef', 'Użytkownik', 'Podstawowe uprawnienia KSEF - przeglądanie', false),
+-- eDeklaracje profiles (dla Portal Symfonia)
+('edeklaracje', 'Administrator', 'Pełne uprawnienia eDeklaracje - zarządzanie wszystkimi funkcjami', false),
+('edeklaracje', 'Edytor', 'Standardowe uprawnienia eDeklaracje - edycja deklaracji', true),
+('edeklaracje', 'Użytkownik', 'Podstawowe uprawnienia eDeklaracje - przeglądanie', false);
+
 -- Insert permissions for each application
 INSERT INTO permissions (app_id, permission_name, description, resource_type, action) VALUES
 -- FK permissions
@@ -325,4 +356,6 @@ JOIN companies c ON c.company_id = tc.company_id;
 -- SELECT * FROM user_effective_permissions WHERE user_id = 'user42' AND tenant_id = 'tenant125';
 
 -- Test effective access view:
--- SELECT * FROM user_effective_access WHERE user_id = 'user150' AND tenant_id = 'tenant125'; 
+-- SELECT * FROM user_effective_access WHERE user_id = 'user150' AND tenant_id = 'tenant125'; -- ============================================================================
+-- PROFILE MAPPINGS (Portal Symfonia concept)
+-- ============================================================================

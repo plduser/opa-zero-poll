@@ -34,16 +34,106 @@ Zdefiniowanie i implementacja hybrydowego modelu uprawnień (RBAC + REBAC-like) 
 - **Priorytet**: WYSOKI (umożliwia konfigurację uprawnień)
 - **Timeline**: 3 tygodnie
 
+#### **Zadanie 1.5.3: Implementacja User Data Sync Service (ID: 40)**
+- **Opis**: Komponent odpowiedzialny za propagację zmian uprawnień z Portal Symfonia do OPA w czasie rzeczywistym
+- **Funkcjonalności**: 
+  - Event-driven synchronizacja z bazy danych PostgreSQL
+  - Translacja zmian do formatu OPAL Data Updates  
+  - Publikacja do OPAL Server (multi_tenant_data topic)
+  - Eventual consistency między Portal UI a OPA
+- **Architektura**: Oddzielny mikroservice z API do ręcznego triggerowania i health checks
+- **Priorytet**: WYSOKI (kluczowy dla real-time synchronizacji)
+- **Timeline**: 2 tygodnie
+
 ### **Dlaczego to jest krytyczne:**
 🎯 **Wszystkie pozostałe funkcjonalności zależą od poprawnej struktury uprawnień**
 - Testowanie z prawdziwymi danymi wymaga Model 2 dla realnych scenariuszy
 - Policy Management Portal potrzebuje Model 2 dla zaawansowanych uprawnień  
 - Git/GitHub workflow integration wymaga jasnego modelu ról i dostępu
 - Multi-environment support opiera się na strukturze teams i memberships
+- **User Data Sync Service zapewnia spójność między Portal UI a OPA w czasie rzeczywistym**
 
 ---
 
-## 🚀 **Faza 2: Testowanie z prawdziwymi danymi systemu** (PRIORYTET WYSOKI)
+## 🚀 **FAZA 2: Dynamiczne zarządzanie zasobami** (ZAAWANSOWANE)
+
+### **Główny cel:**
+Rozszerzenie systemu o możliwość dynamicznego tworzenia zasobów i precyzyjnego zarządzania uprawnieniami na poziomie pojedynczych obiektów (podobnie do Permit.io).
+
+### **Epic 1: Resource-Based Access Control (REBAC)**
+
+#### **Zadanie 2.1: Bezpośrednie uprawnienia do zasobów**
+- **Opis**: Implementacja mechanizmu nadawania uprawnień do konkretnych obiektów (faktury, dokumenty, raporty)
+- **Komponenty**: 
+  - Rozszerzenie Data Provider API o endpoint `/direct-permissions`
+  - Aktualizacja polityk OPA o obsługę `direct_permissions`
+  - UI w Portal Symfonia dla zarządzania uprawnieniami do zasobów
+  - User Data Sync Service - propagacja zmian bezpośrednich uprawnień
+- **Przykłady użycia**:
+  - Uprawnienia do konkretnej faktury w KSEF: `invoice_12345: ["read", "approve"]`
+  - Dostęp do specyficznego dokumentu w eDokumenty: `document_67890: ["edit", "delete"]`
+  - Prawa do określonego raportu: `report_monthly: ["generate", "export"]`
+- **Struktura danych**:
+  ```javascript
+  data.users["user123"].direct_permissions = {
+    ksef: { "invoice_12345": ["read", "approve"] },
+    ebiuro: { "declaration_555": ["submit"] }
+  }
+  ```
+- **Priorytet**: Średni (po Model 2)
+- **Timeline**: 3 tygodnie
+- **Dependencies**: Zadanie 1.5.1, 1.5.2 (Model 2), User Data Sync Service
+
+#### **Zadanie 2.2: Dynamiczne rejestrowanie typów zasobów**
+- **Opis**: API umożliwiające aplikacjom definiowanie własnych typów zasobów i akcji
+- **Komponenty**:
+  - Resource Registry Service - katalog typów zasobów per aplikacja
+  - Resource Definition API - endpoint do rejestracji nowych typów
+  - Schema validation - walidacja struktury zasobów
+  - Portal UI - dynamiczne wyświetlanie zasobów aplikacji
+- **Przykłady**:
+  ```javascript
+  // Rejestracja typu zasobu przez aplikację KSEF
+  POST /api/resources/register
+  {
+    "application": "ksef",
+    "resource_type": "invoice",
+    "actions": ["read", "write", "approve", "delete"],
+    "attributes": ["amount", "customer", "status"]
+  }
+  ```
+- **Priorytet**: Średni
+- **Timeline**: 4 tygodnie
+
+#### **Zadanie 2.3: Hierarchie zasobów**
+- **Opis**: Wsparcie dla hierarchicznych struktur zasobów (Projekt → Zadanie → Podzadanie)
+- **Komponenty**: Parent-child relationships, inheritance policies, recursive permissions
+- **Priorytet**: Niski
+- **Timeline**: 3 tygodnie
+
+### **Epic 2: Portal Symfonia - zaawansowane zarządzanie**
+
+#### **Zadanie 2.4: UI dla zarządzania zasobami**
+- **Opis**: Rozszerzenie Portal Symfonia o sekcję "Uprawnienia zaawansowane"
+- **Features**:
+  - Lista zasobów per aplikacja z możliwością filtrowania
+  - Przydzielanie uprawnień do konkretnych obiektów
+  - Wizualizacja hierarchii zasobów
+  - Bulk operations - masowe zmiany uprawnień
+- **Priorytet**: Średni
+- **Timeline**: 2 tygodnie
+
+#### **Zadanie 2.5: Auditing i monitoring zasobów**
+- **Opis**: System śledzenia zmian uprawnień na poziomie zasobów
+- **Components**: Audit log, change tracking, permission analytics
+- **Priorytet**: Niski
+- **Timeline**: 2 tygodnie
+
+**RAZEM Faza 2: ~14 tygodni (3.5 miesiąca)**
+
+---
+
+## 🧪 **FAZA 3: Testowanie z prawdziwymi danymi systemu** (PRIORYTET WYSOKI)
 
 ### **Główny cel:** 
 Zastąpienie mock data prawdziwymi danymi z systemu Symfonia dla realistycznego testowania policy.
@@ -291,3 +381,102 @@ Pełna integracja z procesem Git-based policy management zapewniającym code rev
 ---
 
 **Rekomendacja: Rozpocząć od Fazy 2 - największa wartość biznesowa przy względnie niskim nakładzie pracy!** 🚀 
+
+---
+
+## 🔮 **FAZA 2+: Dynamiczne zarządzanie zasobami** (PRZYSZŁE ROZSZERZENIE)
+
+### **Główny cel:**
+Rozszerzenie systemu o możliwość dynamicznego tworzenia zasobów i precyzyjnego zarządzania uprawnieniami na poziomie pojedynczych obiektów (podobnie do Permit.io).
+
+**📋 Szczegółowy opis w dokumentacji: [docs/PORTAL_MANAGEMENT.md - Przyszłe rozszerzenie](docs/PORTAL_MANAGEMENT.md#przyszłe-rozszerzenie---bezpośrednie-uprawnienia-faza-2)**
+
+### **Epic 1: Resource-Based Access Control (REBAC)**
+
+#### **Zadanie 2+.1: Bezpośrednie uprawnienia do zasobów**
+- **Opis**: Implementacja mechanizmu nadawania uprawnień do konkretnych obiektów (faktury, dokumenty, raporty)
+- **Komponenty**: 
+  - Rozszerzenie Data Provider API o endpoint `/direct-permissions`
+  - Aktualizacja polityk OPA o obsługę `direct_permissions`
+  - UI w Portal Symfonia dla zarządzania uprawnieniami do zasobów
+  - User Data Sync Service - propagacja zmian bezpośrednich uprawnień
+- **Przykłady użycia**:
+  - Uprawnienia do konkretnej faktury w KSEF: `invoice_12345: ["read", "approve"]`
+  - Dostęp do specyficznego dokumentu w eDokumenty: `document_67890: ["edit", "delete"]`
+  - Prawa do określonego raportu: `report_monthly: ["generate", "export"]`
+- **Struktura danych**:
+  ```javascript
+  data.users["user123"].direct_permissions = {
+    ksef: { "invoice_12345": ["read", "approve"] },
+    ebiuro: { "declaration_555": ["submit"] }
+  }
+  ```
+- **Priorytet**: Średni (po Model 2)
+- **Timeline**: 3 tygodnie
+- **Dependencies**: Zadanie 1.5.1, 1.5.2 (Model 2), User Data Sync Service
+
+#### **Zadanie 2+.2: Dynamiczne rejestrowanie typów zasobów**
+- **Opis**: API umożliwiające aplikacjom definiowanie własnych typów zasobów i akcji
+- **Komponenty**:
+  - Resource Registry Service - katalog typów zasobów per aplikacja
+  - Resource Definition API - endpoint do rejestracji nowych typów
+  - Schema validation - walidacja struktury zasobów
+  - Portal UI - dynamiczne wyświetlanie zasobów aplikacji
+- **Przykłady**:
+  ```javascript
+  // Rejestracja typu zasobu przez aplikację KSEF
+  POST /api/resources/register
+  {
+    "application": "ksef",
+    "resource_type": "invoice",
+    "actions": ["read", "write", "approve", "delete"],
+    "attributes": ["amount", "customer", "status"]
+  }
+  ```
+- **Priorytet**: Średni
+- **Timeline**: 4 tygodnie
+
+#### **Zadanie 2+.3: Hierarchie zasobów**
+- **Opis**: Wsparcie dla hierarchicznych struktur zasobów (Projekt → Zadanie → Podzadanie)
+- **Komponenty**: Parent-child relationships, inheritance policies, recursive permissions
+- **Priorytet**: Niski
+- **Timeline**: 3 tygodnie
+
+### **Epic 2: Portal Symfonia - zaawansowane zarządzanie**
+
+#### **Zadanie 2+.4: UI dla zarządzania zasobami**
+- **Opis**: Rozszerzenie Portal Symfonia o sekcję "Uprawnienia zaawansowane"
+- **Features**:
+  - Lista zasobów per aplikacja z możliwością filtrowania
+  - Przydzielanie uprawnień do konkretnych obiektów
+  - Wizualizacja hierarchii zasobów
+  - Bulk operations - masowe zmiany uprawnień
+- **Priorytet**: Średni
+- **Timeline**: 2 tygodnie
+
+#### **Zadanie 2+.5: Auditing i monitoring zasobów**
+- **Opis**: System śledzenia zmian uprawnień na poziomie zasobów
+- **Components**: Audit log, change tracking, permission analytics
+- **Priorytet**: Niski
+- **Timeline**: 2 tygodnie
+
+### **Zalety rozszerzonej architektury:**
+
+1. **Stopniowe rozwijanie** - nie łamie obecnej architektury
+2. **Elastyczność per aplikacja** - każda aplikacja definiuje własne zasoby
+3. **Wspólny Data Provider** - dalej jeden punkt zarządzania danymi
+4. **Kompatybilność wsteczna** - istniejące polityki nadal działają
+5. **Fine-grained control** - precyzyjne uprawnienia na poziomie objektów
+6. **Resource-based Access Control** - pełny REBAC dla aplikacji
+
+### **Integracja z dynamicznymi zasobami (Permit.io-like):**
+
+W tej fazie aplikacje będą mogły:
+- **Dynamicznie rejestrować nowe typy zasobów** w systemie uprawnień
+- **Tworzyć hierarchie zasobów** (np. Projekt → Zadanie → Podzadanie)
+- **Definiować własne akcje** specyficzne dla domeny biznesowej
+- **Zarządzać cyklem życia zasobów** (tworzenie, modyfikacja, usuwanie)
+
+**Portal Symfonia** będzie w stanie wyświetlać i zarządzać tymi dynamicznymi zasobami bez konieczności zmian w kodzie, podobnie jak dzieje się to w rozwiązaniach typu Permit.io.
+
+**RAZEM Faza 2+: ~14 tygodni (3.5 miesiąca)** 

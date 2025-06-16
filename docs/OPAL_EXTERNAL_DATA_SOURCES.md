@@ -95,6 +95,110 @@ DEBUG | processing store transaction: {'success': True, 'actions': ['set_policy_
 curl -s http://localhost:8181/v1/data/acl/tenant1 | jq .
 ```
 
+## Verification of Success
+
+### 1. Check Data in OPA
+Verify that the data reached OPA and is accessible for policy decisions:
+
+```bash
+# Check if tenant data is available in OPA
+curl -s "http://localhost:8181/v1/data/acl/tenant-125" | jq '.'
+
+# Test policy evaluation with tenant data
+curl -X POST "http://localhost:8181/v1/data/policy_evaluation" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "input": {
+      "user": {"id": "admin_tenant-125", "email": "admin@tenant125.com"},
+      "tenant_id": "tenant-125",
+      "action": "manage_users",
+      "resource": "portal"
+    }
+  }'
+```
+
+### 2. Check OPAL Server Logs
+Verify that OPAL Server received and processed the data update event:
+
+```bash
+# Check OPAL Server logs for data update events
+docker logs opal-server --tail 20
+
+# Look for these key log entries:
+# - "Notifying other side: subscription"
+# - "Broadcasting incoming event"
+# - Topic references to 'multi_tenant_data'
+```
+
+Expected OPAL Server logs should show:
+```
+fastapi_websocket_pubsub.rpc_event_me...| INFO  | Notifying other side: subscription={'id': '...', 'topic': 'multi_tenant_data', ...}
+fastapi_websocket_pubsub.event_broadc...| INFO  | Broadcasting incoming event: {'topic': 'multi_tenant_data', 'notifier_id': '...'}
+```
+
+### 3. Check OPAL Client Logs  
+Verify that OPAL Client received the event and fetched data:
+
+```bash
+# Check OPAL Client logs for data processing
+docker logs opal-client --since 10m | grep -E "(data|config|tenant|acl)" | tail -10
+
+# Look for these key log entries:
+# - "Received notification of event: multi_tenant_data"
+# - "Fetching data from url: http://data-provider-api:8110/tenants/.../acl"
+# - "Saving fetched data to policy-store"
+```
+
+Expected OPAL Client logs should show:
+```
+opal_client.data.rpc | INFO | Received notification of event: multi_tenant_data
+opal_client.data.updater | INFO | Updating policy data, reason: Load new tenant tenant-xxx data
+opal_client.data.fetcher | INFO | Fetching data from url: http://data-provider-api:8110/tenants/tenant-xxx/acl
+opal_client.data.updater | INFO | Saving fetched data to policy-store: source url='...', destination path='/acl/tenant-xxx'
+```
+
+### 4. Health Check OPAL Components
+Verify that all OPAL components are healthy:
+
+```bash
+# Check OPAL Client health
+curl -s "http://localhost:7001/healthcheck" | jq '.'
+
+# Check Docker containers status
+docker-compose ps | grep -E "(opal|opa)"
+```
+
+### Troubleshooting Failed Updates
+
+If data is not reaching OPA or logs show errors:
+
+1. **Check External Data Source connectivity:**
+   ```bash
+   # Test direct connection to Data Provider API
+   curl -s "http://localhost:8110/tenants/tenant-125/acl" | jq '.'
+   ```
+
+2. **Verify OPAL subscription:**
+   ```bash
+   # Send a manual data update event
+   curl -X POST http://localhost:7002/data/config \
+     -H "Content-Type: application/json" \
+     -d '{
+       "entries": [{
+         "url": "http://data-provider-api:8110/tenants/tenant-125/acl",
+         "topics": ["multi_tenant_data"],
+         "dst_path": "/acl/tenant-125"
+       }],
+       "reason": "Manual data update test"
+     }'
+   ```
+
+3. **Check Redis connectivity (if used):**
+   ```bash
+   # Verify Redis connection for pub/sub
+   docker logs opal-server 2>&1 | grep -i redis
+   ```
+
 ## Rozwiązywanie Problemów
 
 ### Problem: "Failed to fetch data for entry"
