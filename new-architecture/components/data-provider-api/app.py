@@ -49,6 +49,34 @@ try:
 except ImportError as e:
     DATABASE_INTEGRATION_AVAILABLE = False
 
+# Import Users Management endpoints
+try:
+    from users_endpoints import register_users_endpoints
+    USERS_ENDPOINTS_AVAILABLE = True
+except ImportError:
+    USERS_ENDPOINTS_AVAILABLE = False
+
+# Import Companies Management endpoints
+try:
+    from companies_endpoints import register_companies_endpoints
+    COMPANIES_ENDPOINTS_AVAILABLE = True
+except ImportError:
+    COMPANIES_ENDPOINTS_AVAILABLE = False
+
+# Import Profiles Management endpoints
+try:
+    from profiles_endpoints import register_profiles_endpoints
+    PROFILES_ENDPOINTS_AVAILABLE = True
+except ImportError as e:
+    PROFILES_ENDPOINTS_AVAILABLE = False
+
+# Import User Profiles Management endpoints
+try:
+    from user_profiles_endpoints import register_user_profiles_endpoints
+    USER_PROFILES_ENDPOINTS_AVAILABLE = True
+except ImportError as e:
+    USER_PROFILES_ENDPOINTS_AVAILABLE = False
+
 # Konfiguracja logowania
 logging.basicConfig(
     level=logging.INFO,
@@ -175,6 +203,39 @@ def root():
         "database_integration": DATABASE_INTEGRATION_AVAILABLE,
         "timestamp": datetime.datetime.utcnow().isoformat()
     })
+
+# Rejestracja endpointów
+if USERS_ENDPOINTS_AVAILABLE:
+    try:
+        register_users_endpoints(app)
+        logger.info("✅ Users management endpoints registered")
+    except Exception as e:
+        logger.error(f"❌ Failed to register users endpoints: {e}")
+        USERS_ENDPOINTS_AVAILABLE = False
+
+if COMPANIES_ENDPOINTS_AVAILABLE:
+    try:
+        register_companies_endpoints(app)
+        logger.info("✅ Companies management endpoints registered")
+    except Exception as e:
+        logger.error(f"❌ Failed to register companies endpoints: {e}")
+        COMPANIES_ENDPOINTS_AVAILABLE = False
+
+if PROFILES_ENDPOINTS_AVAILABLE:
+    try:
+        register_profiles_endpoints(app)
+        logger.info("✅ Profiles management endpoints registered")
+    except Exception as e:
+        logger.error(f"❌ Failed to register profiles endpoints: {e}")
+        PROFILES_ENDPOINTS_AVAILABLE = False
+
+if USER_PROFILES_ENDPOINTS_AVAILABLE:
+    try:
+        register_user_profiles_endpoints(app)
+        logger.info("✅ User profiles management endpoints registered")
+    except Exception as e:
+        logger.error(f"❌ Failed to register user profiles endpoints: {e}")
+        USER_PROFILES_ENDPOINTS_AVAILABLE = False
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8110))
