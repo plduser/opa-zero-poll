@@ -13,17 +13,17 @@
 
 ### Architektura Single Topic Multi-Tenant
 
-Traditional approach (wymaga restartu):
+Tradycyjne podejście (wymaga restartu):
 ```bash
-OPAL_DATA_TOPICS=tenant_1_data,tenant_2_data,tenant_3_data  # ❌ Static configuration
+OPAL_DATA_TOPICS=tenant_1_data,tenant_2_data,tenant_3_data  # ❌ Statyczna konfiguracja
 ```
 
 **Nasze rozwiązanie** (bez restartu):
 ```bash  
-OPAL_DATA_TOPICS=multi_tenant_data  # ✅ Dynamic configuration
+OPAL_DATA_TOPICS=multi_tenant_data  # ✅ Dynamiczna konfiguracja
 ```
 
-### Kluczowa Descoberta
+### Kluczowe Odkrycie
 
 **Separacja tenantów** odbywa się nie przez różne topics, ale przez:
 1. **Różne URL endpoints** w Data Provider API: `/tenants/{tenant_id}/acl`
@@ -51,7 +51,7 @@ OPA: /acl/tenant-125/users/[...]
 
 ## Ścieżka Wywołań
 
-### Step 1: Trigger OPAL Update Event
+### Krok 1: Wywołanie OPAL Update Event
 ```bash
 curl -X POST http://localhost:7002/data/config \
   -H "Content-Type: application/json" \
@@ -65,25 +65,25 @@ curl -X POST http://localhost:7002/data/config \
   }'
 ```
 
-**Expected Response:** `{"status":"ok"}`
+**Oczekiwana odpowiedź:** `{"status":"ok"}`
 
-### Step 2: Verify OPAL Server Logs
+### Krok 2: Sprawdzenie logów OPAL Server
 ```bash
 docker logs opal-server --tail 10
 ```
 
-**Expected Logs:**
+**Oczekiwane logi:**
 ```
 fastapi_websocket_pubsub.rpc_event_me...| INFO  | Notifying other side: subscription={'topic': 'multi_tenant_data'}
 fastapi_websocket_pubsub.event_broadc...| INFO  | Broadcasting incoming event: {'topic': 'multi_tenant_data'}
 ```
 
-### Step 3: Verify OPAL Client Processing
+### Krok 3: Sprawdzenie przetwarzania OPAL Client
 ```bash
 docker logs opal-client --since 5m | grep -E "(data|config|tenant|acl)" | tail -5
 ```
 
-**Expected Logs:**
+**Oczekiwane logi:**
 ```
 opal_client.data.rpc | INFO | Received notification of event: multi_tenant_data
 opal_client.data.updater | INFO | Updating policy data, reason: Load new tenant tenant-1234567890 data
@@ -91,12 +91,12 @@ opal_client.data.fetcher | INFO | Fetching data from url: http://data-provider-a
 opal_client.data.updater | INFO | Saving fetched data to policy-store: destination path='/acl/tenant-1234567890'
 ```
 
-### Step 4: Verify Data in OPA
+### Krok 4: Sprawdzenie danych w OPA
 ```bash
 curl -s "http://localhost:8181/v1/data/acl/tenant-1234567890" | jq '.'
 ```
 
-**Expected Response:**
+**Oczekiwana odpowiedź:**
 ```json
 {
   "result": {
@@ -115,7 +115,7 @@ curl -s "http://localhost:8181/v1/data/acl/tenant-1234567890" | jq '.'
 }
 ```
 
-### Step 5: Test Policy Evaluation
+### Krok 5: Test ewaluacji polityk
 ```bash
 curl -X POST "http://localhost:8181/v1/data/policy_evaluation" \
   -H "Content-Type: application/json" \
@@ -132,7 +132,7 @@ curl -X POST "http://localhost:8181/v1/data/policy_evaluation" \
   }'
 ```
 
-**Expected Response:** `{"result": true}` (authorized)
+**Oczekiwana odpowiedź:** `{"result": true}` (authorized)
 
 ## Implementacja w Provisioning API
 
@@ -191,7 +191,7 @@ DATA_PROVIDER_API_URL=http://data-provider-api:8110
 
 ## Verification Checklist
 
-### ✅ Complete Success Criteria
+### ✅ Kryteria Pełnego Sukcesu
 
 1. **OPAL Server Event:** Status 200 response from `/data/config`
 2. **OPAL Server Logs:** "Broadcasting incoming event" with multi_tenant_data
@@ -211,23 +211,23 @@ DATA_PROVIDER_API_URL=http://data-provider-api:8110
 
 ## Zalety Rozwiązania
 
-### 🚀 Operational Benefits
-- **Zero downtime tenant addition**
-- **Real-time data synchronization**  
-- **Automatic failover resilience**
-- **Simplified operations**
+### 🚀 Korzyści Operacyjne
+- **Dodawanie tenantów bez przestojów**
+- **Synchronizacja danych w czasie rzeczywistym**  
+- **Automatyczna odporność na awarie**
+- **Uproszczone operacje**
 
-### 📈 Technical Benefits  
+### 📈 Korzyści Techniczne  
 - **Single topic scalability** - unlimited tenants
 - **Hierarchical data isolation** in OPA
-- **Event-driven architecture**
-- **Container restart independence**
+- **Architektura sterowana zdarzeniami**
+- **Niezależność od restartów kontenerów**
 
-### 💰 Business Benefits
-- **Faster customer onboarding**
-- **Reduced operational costs**  
-- **Improved system reliability**
-- **Enhanced scalability**
+### 💰 Korzyści Biznesowe
+- **Szybsze wdrażanie klientów**
+- **Obniżone koszty operacyjne**  
+- **Zwiększona niezawodność systemu**
+- **Ulepszona skalowalność**
 
 ## Podsumowanie
 
