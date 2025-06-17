@@ -1,7 +1,6 @@
-const API_BASE_URL = "http://localhost:8110/api"
-const DATA_API_BASE_URL = "http://localhost:8110/api"
+// Users API - zarządzanie użytkownikami z data-provider-api
+const DATA_API_BASE_URL = 'http://localhost:8110/api'
 
-// User interface
 export interface User {
   user_id: string
   username: string
@@ -17,7 +16,6 @@ export interface User {
   }>
 }
 
-// Application interface
 export interface Application {
   app_id: string
   app_name: string
@@ -31,7 +29,7 @@ export interface Application {
   status: string
 }
 
-// Profile interface
+// Nowe typy dla profili
 export interface Profile {
   profile_id: string
   app_id: string
@@ -52,7 +50,6 @@ export interface Profile {
   }>
 }
 
-// User Profile interface
 export interface UserProfile {
   user_id: string
   profile_id: string
@@ -211,8 +208,8 @@ export async function fetchProfile(profileId: string): Promise<Profile | null> {
   }
 }
 
-// Fetch companies for user access management
-export async function fetchCompaniesForUsers(): Promise<Company[]> {
+// Fetch companies
+export async function fetchCompanies(): Promise<Company[]> {
   try {
     const response = await fetch(`${DATA_API_BASE_URL}/companies`)
     if (!response.ok) {
@@ -305,6 +302,21 @@ export async function fetchUserProfiles(userId: string): Promise<Profile[]> {
   }
 }
 
+// Fetch user's assigned companies
+export async function fetchUserCompanies(userId: string): Promise<UserCompanyAccess[]> {
+  try {
+    const response = await fetch(`${DATA_API_BASE_URL}/users/${userId}/companies`)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    const data = await response.json()
+    return data.companies || []
+  } catch (error) {
+    console.error('Error fetching user companies:', error)
+    return []
+  }
+}
+
 // Transform API user to Portal user format
 export function transformApiUserToPortalUser(apiUser: User, index: number): any {
   return {
@@ -373,12 +385,49 @@ export async function deleteUserApplicationAccess(userId: string, profileId: str
   }
 }
 
+// Company interface
+export interface Company {
+  company_id: string
+  company_name: string
+  nip?: string
+  address?: string
+}
+
 // User company access interface
 export interface UserCompanyAccess {
   company_id: string
   company_name: string
   assigned_date: string
   nip?: string
+}
+
+// Fetch all companies
+export async function fetchCompanies(): Promise<Company[]> {
+  try {
+    console.log('Fetching companies...')
+    
+    const response = await fetch(`${DATA_API_BASE_URL}/companies`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    console.log('Companies response status:', response.status)
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || errorData.detail || 'Failed to fetch companies')
+    }
+
+    const companies = await response.json()
+    console.log('Companies fetched:', companies)
+    
+    return companies
+  } catch (error) {
+    console.error('Error fetching companies:', error)
+    throw error
+  }
 }
 
 // Fetch user companies
@@ -400,17 +449,10 @@ export async function fetchUserCompanies(userId: string): Promise<UserCompanyAcc
       throw new Error(errorData.error || errorData.detail || 'Failed to fetch user companies')
     }
 
-    const data = await response.json()
-    console.log('User companies fetched:', data)
+    const companies = await response.json()
+    console.log('User companies fetched:', companies)
     
-    // Map API response to UserCompanyAccess format
-    const companies = data.companies || []
-    return companies.map((company: any) => ({
-      company_id: company.company_id,
-      company_name: company.company_name,
-      assigned_date: company.assigned_at,
-      nip: company.nip
-    }))
+    return companies
   } catch (error) {
     console.error('Error fetching user companies:', error)
     throw error
