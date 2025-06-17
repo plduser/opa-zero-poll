@@ -14,6 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Skopiuj kod aplikacji
 COPY app.py .
+COPY init_db.py .
 COPY opal_endpoints.py .
 COPY database_integration.py .
 COPY users_endpoints.py .

@@ -91,6 +91,16 @@ try:
 except ImportError as e:
     PROFILE_ROLE_MAPPER_AVAILABLE = False
 
+# Import database initialization
+try:
+    from init_db import init_database
+    INIT_DB_AVAILABLE = True
+except ImportError as e:
+    INIT_DB_AVAILABLE = False
+    logger.warning(f"Database initialization not available: {e}")
+
+# Konfiguracja bazy danych będzie dostępna przez DATABASE_INTEGRATION_AVAILABLE
+
 # Konfiguracja logowania
 logging.basicConfig(
     level=logging.INFO,
@@ -462,6 +472,44 @@ def get_opal_full_snapshot():
         logger.error(f"Error generating OPAL full snapshot: {str(e)}")
         return jsonify({
             "error": f"Failed to generate snapshot: {str(e)}"
+        }), 500
+
+# Endpoint inicjalizacji bazy danych
+@app.route("/init-db", methods=["POST"])
+def initialize_database():
+    """
+    Inicjalizuje bazę danych schema i seed data
+    Endpoint dostępny dla administratorów Railway
+    """
+    try:
+        logger.info("🚀 Rozpoczęcie inicjalizacji bazy danych przez API endpoint")
+        
+        if not INIT_DB_AVAILABLE:
+            return jsonify({
+                "status": "error",
+                "message": "Moduł inicjalizacji bazy danych nie jest dostępny"
+            }), 500
+        
+        # Uruchom inicjalizację
+        success = init_database()
+        
+        if success:
+            return jsonify({
+                "status": "success",
+                "message": "Baza danych została zainicjalizowana pomyślnie",
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": "Inicjalizacja bazy danych nie powiodła się"
+            }), 500
+            
+    except Exception as e:
+        logger.error(f"Błąd inicjalizacji bazy danych: {e}")
+        return jsonify({
+            "status": "error",
+            "message": f"Błąd podczas inicjalizacji: {str(e)}"
         }), 500
 
 if __name__ == "__main__":
