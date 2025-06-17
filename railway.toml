@@ -14,7 +14,7 @@ source = "postgresql"
 
 [services.variables]
 POSTGRES_USER = "opa_user"
-POSTGRES_PASSWORD = { $generate = "password" }
+POSTGRES_PASSWORD = "${{ railway.database.password }}"
 POSTGRES_DB = "opa_zero_poll"
 
 # Data Provider API Service
@@ -28,10 +28,10 @@ DEBUG = "false"
 WEBHOOK_SECRET = "railway_super_secret_key_2025"
 DISABLE_JWT_VALIDATION = "true"
 # Database connection - będzie automatycznie połączone z PostgreSQL service
-DB_HOST = { $serviceConnect = "postgres-db" }
+DB_HOST = "${{ services.postgres-db.host }}"
 DB_PORT = "5432"
 DB_USER = "opa_user"
-DB_PASSWORD = { $serviceConnect = "postgres-db.POSTGRES_PASSWORD" }
+DB_PASSWORD = "${{ services.postgres-db.POSTGRES_PASSWORD }}"
 DB_NAME = "opa_zero_poll"
 
 [services.healthcheck]
@@ -44,4 +44,4 @@ name = "frontend"
 source = "."
 
 [services.variables]
-DATA_PROVIDER_API_URL = { $serviceConnect = "data-provider-api" } 
+DATA_PROVIDER_API_URL = "${{ services.data-provider-api.url }}" 
