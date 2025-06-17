@@ -1,5 +1,5 @@
-const API_BASE_URL = "http://localhost:8110/api"
-const DATA_API_BASE_URL = "http://localhost:8110/api"
+// Use Next.js API routes as proxy to backend
+const DATA_API_BASE_URL = "/api"
 
 // User interface
 export interface User {
@@ -76,7 +76,23 @@ export async function fetchUsers(): Promise<User[]> {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
     const data = await response.json()
-    return data.users || []
+    
+    // Handle both API format variants
+    if (data.users) {
+      // Transform from portal format to User interface format
+      return data.users.map((user: any) => ({
+        user_id: user.id || user.user_id,
+        username: user.name || user.username || user.full_name,
+        email: user.email,
+        full_name: user.name || user.full_name,
+        status: user.status === 'active' ? 'active' : 'inactive',
+        created_at: new Date().toISOString(), // Not available in portal format
+        companies_count: user.tenants?.length || 0,
+        profiles: user.profiles || []
+      }))
+    }
+    
+    return []
   } catch (error) {
     console.error('Error fetching users:', error)
     return []
@@ -339,7 +355,26 @@ export async function fetchUserApplicationAccess(userId: string): Promise<UserAp
       throw new Error(`HTTP error! status: ${response.status}`)
     }
     const data = await response.json()
-    return data.application_access || []
+    
+    // Przekształć zagnieżdżone dane API na płaską listę
+    const applications = data.applications || []
+    const flattenedAccess: UserApplicationAccess[] = []
+    
+    applications.forEach((app: any) => {
+      app.profiles?.forEach((profile: any) => {
+        flattenedAccess.push({
+          user_id: userId,
+          app_id: app.app_id,
+          app_name: app.app_name,
+          profile_id: profile.profile_id,
+          profile_name: profile.profile_name,
+          assigned_at: profile.assigned_at,
+          assigned_by: profile.assigned_by
+        })
+      })
+    })
+    
+    return flattenedAccess
   } catch (error) {
     console.error('Error fetching user application access:', error)
     throw error

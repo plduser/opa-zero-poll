@@ -35,7 +35,7 @@ export function ApplicationAccessDialog({
     const loadApplications = async () => {
       try {
         setLoading(true)
-        const response = await fetch('http://localhost:8110/api/applications')
+        const response = await fetch('/api/applications')
         const data = await response.json()
         setApplications(data.database_applications || [])
       } catch (error) {
@@ -60,7 +60,7 @@ export function ApplicationAccessDialog({
       }
 
       try {
-        const response = await fetch('http://localhost:8110/api/profiles')
+        const response = await fetch('/api/profiles')
         const data = await response.json()
         
         // Znajdź app_id dla wybranej aplikacji
@@ -95,11 +95,11 @@ export function ApplicationAccessDialog({
     setSubmitting(true)
     try {
       console.log('Wysyłanie zapytania API:', {
-        userId: user.user_id,
+        userId: user.user_id || user.id,
         profileId: selectedProfile,
       })
       
-      const response = await fetch(`http://localhost:8110/api/users/${user.user_id}/application-access`, {
+      const response = await fetch(`/api/users/${user.user_id || user.id}/application-access`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,7 +124,16 @@ export function ApplicationAccessDialog({
       } else {
         const errorData = await response.json()
         console.error('API Error:', errorData)
-        onError(errorData.error || errorData.detail || 'Nie udało się przyznać dostępu do aplikacji')
+        
+        // Lepsze komunikaty dla konkretnych błędów
+        let errorMessage = 'Nie udało się przyznać dostępu do aplikacji'
+        if (response.status === 409) {
+          errorMessage = `Użytkownik ma już dostęp do tego profilu. ${errorData.error || ''}`
+        } else if (errorData.error) {
+          errorMessage = errorData.error
+        }
+        
+        onError(errorMessage)
       }
     } catch (error) {
       console.error('Network error:', error)

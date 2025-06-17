@@ -135,46 +135,50 @@ def register_user_profiles_endpoints(app):
                 if exists:
                     return jsonify({"error": "Profil już przypisany do użytkownika"}), 409
                 
-                # Utwórz przypisanie profilu
+                # Pobierz domyślny tenant użytkownika PRZED wstawieniem
                 cursor.execute("""
-                    INSERT INTO user_application_profiles (user_id, profile_id, assigned_at, assigned_by)
-                    VALUES (%s, %s, NOW(), %s)
-                """, (user_id, profile_id, assigned_by))
+                    SELECT ut.tenant_id FROM user_tenants ut 
+                    WHERE ut.user_id = %s AND ut.is_default = true AND ut.is_active = true
+                    LIMIT 1
+                """, (user_id,))
+                tenant_result = cursor.fetchone()
+                if not tenant_result:
+                    return jsonify({"error": "Nie można określić tenant_id użytkownika"}), 400
+                
+                tenant_id = tenant_result['tenant_id'] if isinstance(tenant_result, dict) else tenant_result[0]
+                
+                # Utwórz przypisanie profilu z tenant_id
+                cursor.execute("""
+                    INSERT INTO user_application_profiles (user_id, profile_id, tenant_id, assigned_at, assigned_by)
+                    VALUES (%s, %s, %s, NOW(), %s)
+                """, (user_id, profile_id, tenant_id, assigned_by))
                 
                 # Automatyczne mapowanie profilu na role (nasz nowy system)
                 from profile_role_mapper import apply_profile_to_user_roles
                 
-                # Pobierz domyślny tenant użytkownika
-                cursor.execute("SELECT tenant_id FROM users WHERE user_id = %s LIMIT 1", (user_id,))
-                tenant_result = cursor.fetchone()
-                if tenant_result:
-                    tenant_id = tenant_result['tenant_id'] if isinstance(tenant_result, dict) else tenant_result[0]
-                    
-                    # Zastosuj mapowanie profilu do ról
-                    mapping_result = apply_profile_to_user_roles(
-                        user_id, 
-                        profile_id, 
-                        profile_data['app_id'], 
-                        tenant_id
-                    )
-                    
-                    result = {
-                        "success": True,
-                        "message": f"Profil {profile_data['profile_name']} przypisany użytkownikowi {user_id}",
-                        "profile": {
-                            "profile_id": profile_id,
-                            "profile_name": profile_data['profile_name'],
-                            "app_id": profile_data['app_id'],
-                            "app_name": profile_data['app_name']
-                        },
-                        "role_mapping": mapping_result
-                    }
-                    
-                    logger.info(f"✅ Profil {profile_id} przypisany i zmapowany na role dla użytkownika {user_id}")
-                    return jsonify(result), 201
-                else:
-                    logger.warning(f"⚠️ Nie znaleziono tenant_id dla użytkownika {user_id}")
-                    return jsonify({"error": "Nie można określić tenant_id użytkownika"}), 400
+                # tenant_id już mamy z poprzedniego zapytania
+                # Zastosuj mapowanie profilu do ról
+                mapping_result = apply_profile_to_user_roles(
+                    user_id, 
+                    profile_id, 
+                    profile_data['app_id'], 
+                    tenant_id
+                )
+                
+                result = {
+                    "success": True,
+                    "message": f"Profil {profile_data['profile_name']} przypisany użytkownikowi {user_id}",
+                    "profile": {
+                        "profile_id": profile_id,
+                        "profile_name": profile_data['profile_name'],
+                        "app_id": profile_data['app_id'],
+                        "app_name": profile_data['app_name']
+                    },
+                    "role_mapping": mapping_result
+                }
+                
+                logger.info(f"✅ Profil {profile_id} przypisany i zmapowany na role dla użytkownika {user_id}")
+                return jsonify(result), 201
                 
         except Exception as e:
             logger.error(f"❌ Błąd przypisywania profilu użytkownikowi {user_id}: {e}")
@@ -259,18 +263,19 @@ def register_user_profiles_endpoints(app):
             logger.info(f"Pobieranie firm dla użytkownika {user_id}")
             
             with get_db_cursor() as cursor:
-                # Pobierz firmy przypisane do użytkownika
+                # Pobierz firmy przypisane do użytkownika (używamy user_access zamiast user_companies)
                 cursor.execute("""
                     SELECT 
-                        uc.company_id,
+                        ua.company_id,
                         c.company_name,
-                        c.tax_number,
+                        c.company_code,
                         c.tenant_id,
-                        uc.assigned_at,
-                        uc.assigned_by
-                    FROM user_companies uc
-                    JOIN companies c ON uc.company_id = c.company_id
-                    WHERE uc.user_id = %s
+                        ua.granted_at,
+                        ua.granted_by,
+                        ua.access_type
+                    FROM user_access ua
+                    JOIN companies c ON ua.company_id = c.company_id
+                    WHERE ua.user_id = %s
                     ORDER BY c.company_name
                 """, (user_id,))
                 
@@ -282,10 +287,11 @@ def register_user_profiles_endpoints(app):
                     result_companies.append({
                         "company_id": row['company_id'],
                         "company_name": row['company_name'],
-                        "tax_number": row['tax_number'],
+                        "company_code": row['company_code'],
                         "tenant_id": row['tenant_id'],
-                        "assigned_at": row['assigned_at'].isoformat() if row['assigned_at'] else None,
-                        "assigned_by": row['assigned_by']
+                        "granted_at": row['granted_at'].isoformat() if row['granted_at'] else None,
+                        "granted_by": row['granted_by'],
+                        "access_type": row['access_type']
                     })
                 
                 result = {
@@ -317,7 +323,7 @@ def register_user_profiles_endpoints(app):
             with get_db_cursor() as cursor:
                 # Sprawdź czy firma istnieje
                 cursor.execute("""
-                    SELECT company_id, company_name, tax_number
+                    SELECT company_id, company_name, company_code, tenant_id
                     FROM companies WHERE company_id = %s
                 """, (company_id,))
                 
@@ -327,7 +333,7 @@ def register_user_profiles_endpoints(app):
                 
                 # Sprawdź czy przypisanie już istnieje
                 cursor.execute("""
-                    SELECT COUNT(*) as count FROM user_companies
+                    SELECT COUNT(*) as count FROM user_access
                     WHERE user_id = %s AND company_id = %s
                 """, (user_id, company_id))
                 
@@ -337,11 +343,11 @@ def register_user_profiles_endpoints(app):
                 if exists:
                     return jsonify({"error": "Firma już przypisana do użytkownika"}), 409
                 
-                # Utwórz przypisanie firmy
+                # Utwórz przypisanie firmy (używamy user_access)
                 cursor.execute("""
-                    INSERT INTO user_companies (user_id, company_id, assigned_at, assigned_by)
-                    VALUES (%s, %s, NOW(), %s)
-                """, (user_id, company_id, assigned_by))
+                    INSERT INTO user_access (user_id, company_id, tenant_id, access_type, granted_by)
+                    VALUES (%s, %s, %s, 'direct', %s)
+                """, (user_id, company_id, company_data['tenant_id'], assigned_by))
                 
                 result = {
                     "success": True,
@@ -349,7 +355,7 @@ def register_user_profiles_endpoints(app):
                     "company": {
                         "company_id": company_id,
                         "company_name": company_data['company_name'],
-                        "tax_number": company_data['tax_number']
+                        "company_code": company_data['company_code']
                     }
                 }
                 
@@ -369,10 +375,10 @@ def register_user_profiles_endpoints(app):
             with get_db_cursor() as cursor:
                 # Sprawdź czy przypisanie istnieje i pobierz dane firmy
                 cursor.execute("""
-                    SELECT c.company_name, c.tax_number
-                    FROM user_companies uc
-                    JOIN companies c ON uc.company_id = c.company_id
-                    WHERE uc.user_id = %s AND uc.company_id = %s
+                    SELECT c.company_name, c.company_code
+                    FROM user_access ua
+                    JOIN companies c ON ua.company_id = c.company_id
+                    WHERE ua.user_id = %s AND ua.company_id = %s
                 """, (user_id, company_id))
                 
                 company_data = cursor.fetchone()
@@ -381,7 +387,7 @@ def register_user_profiles_endpoints(app):
                 
                 # Usuń przypisanie firmy
                 cursor.execute("""
-                    DELETE FROM user_companies
+                    DELETE FROM user_access
                     WHERE user_id = %s AND company_id = %s
                 """, (user_id, company_id))
                 
@@ -394,7 +400,7 @@ def register_user_profiles_endpoints(app):
                     "removed_company": {
                         "company_id": company_id,
                         "company_name": company_data['company_name'],
-                        "tax_number": company_data['tax_number']
+                        "company_code": company_data['company_code']
                     }
                 }
                 
