@@ -1,0 +1,20 @@
+[
+  {
+    "username": "user123",
+    "email": "user123@tenant1.com",
+    "full_name": "Ksiegowa Portal",
+    "tenant_id": "tenant1"
+  },
+  {
+    "username": "user456",
+    "email": "user456@tenant1.com", 
+    "full_name": "Handlowiec Portal",
+    "tenant_id": "tenant1"
+  },
+  {
+    "username": "user789",
+    "email": "user789@tenant1.com",
+    "full_name": "HR Portal",
+    "tenant_id": "tenant1"
+  }
+] 

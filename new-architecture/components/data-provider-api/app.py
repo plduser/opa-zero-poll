@@ -77,6 +77,13 @@ try:
 except ImportError as e:
     USER_PROFILES_ENDPOINTS_AVAILABLE = False
 
+# Import User Data Sync Service
+try:
+    from user_data_sync import UserDataSyncService, notify_user_change, sync_full_tenant
+    USER_DATA_SYNC_AVAILABLE = True
+except ImportError as e:
+    USER_DATA_SYNC_AVAILABLE = False
+
 # Konfiguracja logowania
 logging.basicConfig(
     level=logging.INFO,

@@ -239,6 +239,14 @@ def create_complete_tenant_structure(cursor, tenant_id, tenant_name, admin_email
             VALUES (%s, %s, %s, NOW(), 'system')
         """, (user_id, role_id, tenant_id))
         
+        # 7.5. DODAJ WPIS DO user_tenants (KLUCZOWY BRAKUJĄCY KROK!)
+        logger.info(f"🔥 DEBUG: Przed dodaniem do user_tenants - user_id={user_id}, tenant_id={tenant_id}")
+        cursor.execute("""
+            INSERT INTO user_tenants (user_id, tenant_id, is_default, assigned_by, notes)
+            VALUES (%s, %s, TRUE, 'system', %s)
+        """, (user_id, tenant_id, f"Domyślny tenant dla administratora {admin_name}"))
+        logger.info(f"🔥 DEBUG: Po dodaniu do user_tenants - SUKCES!")
+        
         # 8. Sprawdź czy uprawnienia Portal Administrator istnieją i przypisz je
         portal_permissions = [
             ('manage_users', 'Zarządzanie użytkownikami'),
