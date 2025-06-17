@@ -10,9 +10,13 @@ import os
 
 # Import User Data Sync Service
 try:
-    from user_data_sync import notify_user_change, notify_role_change, notify_permission_change, sync_full_tenant
+    from user_data_sync import UserDataSyncService, publish_translated_event
+    # Initialize sync service
+    sync_service = UserDataSyncService()
     USER_DATA_SYNC_AVAILABLE = True
 except ImportError:
+    sync_service = None
+    publish_translated_event = None
     USER_DATA_SYNC_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
@@ -109,6 +113,44 @@ def register_users_endpoints(app):
                     conn.commit()
                     
                     logger.info(f"User {user_id} ({user['full_name']}) deleted successfully")
+                    
+                    # Powiadom OPAL o usunięciu użytkownika PRZED return - używając translatora
+                    try:
+                        logger.info(f"🔍 DEBUG: About to send OPAL notification")
+                        logger.info(f"🔍 DEBUG: USER_DATA_SYNC_AVAILABLE={USER_DATA_SYNC_AVAILABLE}, sync_service={sync_service}")
+                        if USER_DATA_SYNC_AVAILABLE and sync_service and publish_translated_event:
+                            # Pobierz tenant_id z request lub użyj domyślnego
+                            tenant_id = request.args.get("tenant_id", "tenant1")
+                            logger.info(f"🔍 DEBUG: Attempting to send OPAL notification for deletion - tenant_id={tenant_id}, user_id={user_id}")
+                            
+                            # Tradycyjne powiadomienie
+                            result = sync_service.publish_user_update(
+                                tenant_id=tenant_id,
+                                user_id=user_id,
+                                action="delete"
+                            )
+                            
+                            # Nowe przetłumaczone powiadomienie
+                            event_data = {
+                                "event_type": "user_delete",
+                                "tenant_id": tenant_id,
+                                "user_id": user_id
+                            }
+                            
+                            translated_result = publish_translated_event(event_data)
+                            
+                            if result and translated_result:
+                                logger.info(f"✅ OPAL notifications (traditional + translated) sent for user deletion: {user_id}")
+                            elif result:
+                                logger.info(f"✅ OPAL traditional notification sent for user deletion: {user_id}")
+                                logger.warning(f"⚠️ Failed to send translated OPAL notification for user deletion: {user_id}")
+                            else:
+                                logger.warning(f"⚠️ Failed to send OPAL notifications for user deletion: {user_id}")
+                        else:
+                            logger.warning(f"🔍 DEBUG: OPAL notification skipped - conditions not met")
+                    except Exception as opal_error:
+                        logger.error(f"🔥 EXCEPTION in OPAL notification: {opal_error}")
+                        logger.exception("Full traceback:")
                     
                     return jsonify({
                         "message": "User deleted successfully",
@@ -230,9 +272,37 @@ def register_users_endpoints(app):
                 
                 logger.info(f"User created successfully: {user_id}")
                 
-                # Powiadom OPAL o nowym użytkowniku
-                if USER_DATA_SYNC_AVAILABLE:
-                    notify_user_change(tenant_id, user_id, "add")
+                # Powiadom OPAL o nowym użytkowniku - używając translatora
+                if USER_DATA_SYNC_AVAILABLE and sync_service and publish_translated_event:
+                    # Tradycyjne powiadomienie
+                    result = sync_service.publish_user_update(
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        action="create"
+                    )
+                    
+                    # Nowe przetłumaczone powiadomienie
+                    event_data = {
+                        "event_type": "user_create",
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "user_data": {
+                            "username": data["username"],
+                            "email": data["email"],
+                            "full_name": data["full_name"],
+                            "status": data.get("status", "active")
+                        }
+                    }
+                    
+                    translated_result = publish_translated_event(event_data)
+                    
+                    if result and translated_result:
+                        logger.info(f"✅ OPAL notifications (traditional + translated) sent for user creation: {user_id}")
+                    elif result:
+                        logger.info(f"✅ OPAL traditional notification sent for user creation: {user_id}")
+                        logger.warning(f"⚠️ Failed to send translated OPAL notification for user creation: {user_id}")
+                    else:
+                        logger.warning(f"⚠️ Failed to send OPAL notifications for user creation: {user_id}")
                 
                 return jsonify({
                     "user": dict(new_user),
@@ -318,14 +388,41 @@ def register_users_endpoints(app):
                 
                 logger.info(f"Role {profile_name} assigned successfully to user {user_id}")
                 
-                # Powiadom OPAL o zmianie ról
-                if USER_DATA_SYNC_AVAILABLE:
-                    role_changes = {
-                        "app_id": app_id,
-                        "profile_name": profile_name,
-                        "action": "assigned"
+                # Powiadom OPAL o zmianie ról - używając translatora
+                if USER_DATA_SYNC_AVAILABLE and sync_service and publish_translated_event:
+                    # Tradycyjne powiadomienie
+                    result = sync_service.publish_role_update(
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        role_changes={
+                            "app_id": app_id,
+                            "profile_name": profile_name,
+                            "action": "assigned"
+                        },
+                        action="assign_role"
+                    )
+                    
+                    # Nowe przetłumaczone powiadomienie
+                    event_data = {
+                        "event_type": "role_assignment",
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "role_changes": {
+                            "app_id": app_id,
+                            "profile_name": profile_name,
+                            "action": "assigned"
+                        }
                     }
-                    notify_role_change(tenant_id, user_id, role_changes, "add_role")
+                    
+                    translated_result = publish_translated_event(event_data)
+                    
+                    if result and translated_result:
+                        logger.info(f"✅ OPAL notifications (traditional + translated) sent for role assignment: {user_id} -> {profile_name}")
+                    elif result:
+                        logger.info(f"✅ OPAL traditional notification sent for role assignment: {user_id} -> {profile_name}")
+                        logger.warning(f"⚠️ Failed to send translated OPAL notification for role assignment: {user_id}")
+                    else:
+                        logger.warning(f"⚠️ Failed to send OPAL notifications for role assignment: {user_id}")
                 
                 return jsonify({
                     "message": "Role assigned successfully",
@@ -386,14 +483,41 @@ def register_users_endpoints(app):
                 
                 logger.info(f"Role {role_info['profile_name']} removed successfully from user {user_id}")
                 
-                # Powiadom OPAL o zmianie ról
-                if USER_DATA_SYNC_AVAILABLE:
-                    role_changes = {
-                        "app_id": role_info["app_id"],
-                        "profile_name": role_info["profile_name"],
-                        "action": "removed"
+                # Powiadom OPAL o zmianie ról - używając translatora
+                if USER_DATA_SYNC_AVAILABLE and sync_service and publish_translated_event:
+                    # Tradycyjne powiadomienie
+                    result = sync_service.publish_role_update(
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        role_changes={
+                            "app_id": role_info["app_id"],
+                            "profile_name": role_info["profile_name"],
+                            "action": "removed"
+                        },
+                        action="remove_role"
+                    )
+                    
+                    # Nowe przetłumaczone powiadomienie
+                    event_data = {
+                        "event_type": "role_assignment",
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "role_changes": {
+                            "app_id": role_info["app_id"],
+                            "profile_name": role_info["profile_name"],
+                            "action": "removed"
+                        }
                     }
-                    notify_role_change(tenant_id, user_id, role_changes, "remove_role")
+                    
+                    translated_result = publish_translated_event(event_data)
+                    
+                    if result and translated_result:
+                        logger.info(f"✅ OPAL notifications (traditional + translated) sent for role removal: {user_id} -> {role_info['profile_name']}")
+                    elif result:
+                        logger.info(f"✅ OPAL traditional notification sent for role removal: {user_id} -> {role_info['profile_name']}")
+                        logger.warning(f"⚠️ Failed to send translated OPAL notification for role removal: {user_id}")
+                    else:
+                        logger.warning(f"⚠️ Failed to send OPAL notifications for role removal: {user_id}")
                 
                 return jsonify({
                     "message": "Role removed successfully",

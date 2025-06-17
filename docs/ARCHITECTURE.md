@@ -184,4 +184,7 @@ A: Przez JWT claims z tenant_id. OPAL Client wysyła JWT token, Data Provider AP
 A: Provisioning API rejestruje External Data Source w OPAL Server, który automatycznie konfiguruje OPAL Client do pobierania danych dla nowego tenanta.
 
 ### **Q: Czy Integration Scripts są nadal potrzebne?**
-A: W docelowej architekturze NIE. Są zastąpione przez OPAL External Data Sources. Pozostają tylko dla legacy compatibility w POC. 
+A: W docelowej architekturze NIE. Są zastąpione przez OPAL External Data Sources. Pozostają tylko dla legacy compatibility w POC.
+
+### **Q: Czy Permission Event Translator został przetestowany?**
+A: TAK. Subtask 40.3 ukończony pomyślnie 17 czerwca 2025. Szczegółowe testy dostępne w [PERMISSION_EVENT_TRANSLATOR_TESTS.md](./PERMISSION_EVENT_TRANSLATOR_TESTS.md). Translator poprawnie transluje eventy CREATE/DELETE użytkowników i współpracuje z politykami OPA. 

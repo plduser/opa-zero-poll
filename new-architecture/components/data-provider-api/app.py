@@ -79,7 +79,7 @@ except ImportError as e:
 
 # Import User Data Sync Service
 try:
-    from user_data_sync import UserDataSyncService, notify_user_change, sync_full_tenant
+    from user_data_sync import UserDataSyncService, notify_user_change, sync_full_tenant, get_sync_metrics
     USER_DATA_SYNC_AVAILABLE = True
 except ImportError as e:
     USER_DATA_SYNC_AVAILABLE = False
@@ -280,6 +280,33 @@ def swagger_ui():
     </body>
     </html>
     '''
+
+@app.route("/sync/metrics", methods=["GET"])
+def get_user_data_sync_metrics():
+    """Endpoint do monitoringu stanu User Data Sync Service"""
+    if not USER_DATA_SYNC_AVAILABLE:
+        return jsonify({
+            "error": "User Data Sync Service is not available",
+            "available": False,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }), 503
+    
+    try:
+        metrics = get_sync_metrics()
+        return jsonify({
+            "user_data_sync_metrics": metrics,
+            "available": True,
+            "service_status": "healthy" if metrics["success_rate_percent"] >= 90 else "degraded",
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error getting sync metrics: {e}")
+        return jsonify({
+            "error": "Failed to get sync metrics",
+            "details": str(e),
+            "available": USER_DATA_SYNC_AVAILABLE,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        }), 500
 
 # Rejestracja endpointów
 if USERS_ENDPOINTS_AVAILABLE:
