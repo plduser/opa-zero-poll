@@ -84,6 +84,13 @@ try:
 except ImportError as e:
     USER_DATA_SYNC_AVAILABLE = False
 
+# Import Profile Role Mapper
+try:
+    from profile_role_mapper import apply_profile_to_user_roles, remove_profile_from_user_roles, sync_user_profiles_to_roles
+    PROFILE_ROLE_MAPPER_AVAILABLE = True
+except ImportError as e:
+    PROFILE_ROLE_MAPPER_AVAILABLE = False
+
 # Konfiguracja logowania
 logging.basicConfig(
     level=logging.INFO,
@@ -208,8 +215,71 @@ def root():
         "version": "3.1.0",
         "description": "Multi-tenant ACL data provider for OPA with database integration",
         "database_integration": DATABASE_INTEGRATION_AVAILABLE,
+        "openapi_docs": "/openapi.json",
+        "swagger_ui": "/docs",
         "timestamp": datetime.datetime.utcnow().isoformat()
     })
+
+@app.route("/openapi.json", methods=["GET"])
+def get_openapi_spec():
+    """Zwraca specyfikację OpenAPI"""
+    try:
+        with open('openapi.json', 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return jsonify({
+            "error": "OpenAPI specification not found",
+            "message": "Please ensure openapi.json file exists"
+        }), 404
+
+@app.route("/docs")
+def swagger_ui():
+    """Swagger UI dla dokumentacji API"""
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Data Provider API Documentation</title>
+        <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui.css" />
+        <style>
+            html {
+                box-sizing: border-box;
+                overflow: -moz-scrollbars-vertical;
+                overflow-y: scroll;
+            }
+            *, *:before, *:after {
+                box-sizing: inherit;
+            }
+            body {
+                margin:0;
+                background: #fafafa;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-bundle.js"></script>
+        <script src="https://unpkg.com/swagger-ui-dist@4.15.5/swagger-ui-standalone-preset.js"></script>
+        <script>
+            window.onload = function() {
+                const ui = SwaggerUIBundle({
+                    url: '/openapi.json',
+                    dom_id: '#swagger-ui',
+                    deepLinking: true,
+                    presets: [
+                        SwaggerUIBundle.presets.apis,
+                        SwaggerUIStandalonePreset
+                    ],
+                    plugins: [
+                        SwaggerUIBundle.plugins.DownloadUrl
+                    ],
+                    layout: "StandaloneLayout"
+                });
+            };
+        </script>
+    </body>
+    </html>
+    '''
 
 # Rejestracja endpointów
 if USERS_ENDPOINTS_AVAILABLE:
@@ -244,6 +314,56 @@ if USER_PROFILES_ENDPOINTS_AVAILABLE:
         logger.error(f"❌ Failed to register user profiles endpoints: {e}")
         USER_PROFILES_ENDPOINTS_AVAILABLE = False
 
+# Rejestracja OPAL External Data Sources endpoints
+if OPAL_ENDPOINTS_AVAILABLE:
+    try:
+        # Model 2 support check (optional)
+        model2_available = Model2Validator is not None and Model2Endpoints is not None
+        register_opal_endpoints(app, model2_available=model2_available)
+        logger.info("✅ OPAL External Data Sources endpoints registered")
+        logger.info(f"🔧 Model 2 support: {model2_available}")
+    except Exception as e:
+        logger.error(f"❌ Failed to register OPAL endpoints: {e}")
+        OPAL_ENDPOINTS_AVAILABLE = False
+
+@app.route("/debug/user_access/<user_id>/<tenant_id>", methods=["GET"])
+def debug_user_access(user_id, tenant_id):
+    """Endpoint diagnostyczny do sprawdzenia user_access dla użytkownika"""
+    if not DATABASE_INTEGRATION_AVAILABLE:
+        return jsonify({"error": "Database not available"}), 503
+    
+    try:
+        from database.dao import UserAccessDAO, UserRoleDAO
+        
+        # Sprawdź user_access
+        user_access_dao = UserAccessDAO()
+        user_accesses = user_access_dao.find_by_criteria({'user_id': user_id, 'tenant_id': tenant_id})
+        
+        # Sprawdź user_roles
+        user_role_dao = UserRoleDAO()
+        user_roles = user_role_dao.find_by_user_and_tenant(user_id, tenant_id)
+        roles_by_app = user_role_dao.find_roles_for_user(user_id, tenant_id)
+        
+        return jsonify({
+            "user_id": user_id,
+            "tenant_id": tenant_id,
+            "user_access_records": len(user_accesses),
+            "user_access_details": [
+                {
+                    "company_id": access.company_id,
+                    "access_type": access.access_type,
+                    "granted_at": str(access.granted_at) if access.granted_at else None
+                } for access in user_accesses
+            ],
+            "user_role_records": len(user_roles),
+            "roles_by_app": roles_by_app,
+            "timestamp": datetime.datetime.utcnow().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Debug user_access failed: {e}")
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8110))
     debug = os.environ.get("DEBUG", "false").lower() == "true"
@@ -251,5 +371,6 @@ if __name__ == "__main__":
     logger.info(f"🚀 Starting Data Provider API on port {port}")
     logger.info(f"🔧 Debug mode: {debug}")
     logger.info(f"💾 Database integration: {DATABASE_INTEGRATION_AVAILABLE}")
+    logger.info(f"🔗 OPAL External Data Sources: {OPAL_ENDPOINTS_AVAILABLE}")
     
     app.run(host="0.0.0.0", port=port, debug=debug) 

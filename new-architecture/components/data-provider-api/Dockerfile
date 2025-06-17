@@ -21,11 +21,15 @@ COPY companies_endpoints.py .
 COPY profiles_endpoints.py .
 COPY user_profiles_endpoints.py .
 COPY user_data_sync.py .
+COPY profile_role_mapper.py .
 COPY shared/ ./shared/
 
 # Skopiuj pliki Model 2
 COPY model2*.py ./
 COPY model2-sample-data.json ./
+
+# Skopiuj dokumentację OpenAPI
+COPY openapi.json ./
 
 # Utwórz użytkownika bez uprawnień root
 RUN adduser --disabled-password --gecos '' appuser && \

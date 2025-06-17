@@ -149,7 +149,8 @@ services:
       # Data Configuration
       - OPAL_DATA_CONFIG_SOURCES_FILE_PATH=/data-config.json
       - OPAL_DATA_CONFIG_ENABLED=true
-      - OPAL_ALL_DATA_URL=http://simple-api-provider:8090/full-snapshot
+      # LEGACY DANE TESTOWE - WYŁĄCZONE - używamy tylko rzeczywistych danych z data-provider-api
+      # - OPAL_ALL_DATA_URL=http://simple-api-provider:8090/full-snapshot
       
       # Server Performance
       - OPAL_LOG_LEVEL=DEBUG

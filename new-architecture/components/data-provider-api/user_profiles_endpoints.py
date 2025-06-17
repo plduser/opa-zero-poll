@@ -16,6 +16,7 @@ Endpoints:
 - GET /api/users/{user_id}/companies - pobierz firmy użytkownika
 - POST /api/users/{user_id}/companies - przypisz firmę użytkownikowi
 - DELETE /api/users/{user_id}/companies/{company_id} - usuń firmę od użytkownika
+- POST /api/users/{user_id}/sync-profiles - synchronizuj profile użytkownika z rolami
 """
 
 import os
@@ -26,46 +27,31 @@ from typing import Dict, Any, Optional, List
 from flask import request, jsonify
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from flask import Blueprint
+# DAO imports removed - this module uses direct SQL queries
+from shared.database.connection import get_db_cursor
+from profile_role_mapper import apply_profile_to_user_roles, remove_profile_from_user_roles, sync_user_profiles_to_roles
 
 logger = logging.getLogger(__name__)
 
-def get_db_connection():
-    """Utworz połączenie z bazą danych PostgreSQL"""
-    try:
-        conn = psycopg2.connect(
-            host=os.environ.get('DB_HOST', 'postgres-db'),
-            port=os.environ.get('DB_PORT', '5432'),
-            database=os.environ.get('DB_NAME', 'opa_zero_poll'),
-            user=os.environ.get('DB_USER', 'opa_user'),
-            password=os.environ.get('DB_PASSWORD', 'opa_password')
-        )
-        return conn
-    except Exception as e:
-        logger.error(f"Błąd połączenia z bazą danych: {e}")
-        return None
-
 def register_user_profiles_endpoints(app):
-    """Zarejestruj endpointy zarządzania dostępami użytkowników do aplikacji i firm"""
+    """Rejestruje endpointy do zarządzania profilami użytkowników"""
     
     @app.route('/api/users/<user_id>/application-access', methods=['GET'])
     def get_user_application_access(user_id):
-        """Pobierz wszystkie dostępy użytkownika do aplikacji (z profilami)"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 500
-            
+        """Pobierz dostępy użytkownika do aplikacji (profile)"""
         try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Pobierz dostępy użytkownika do aplikacji z pełnymi danymi
-                cur.execute("""
+            logger.info(f"Pobieranie dostępów aplikacji dla użytkownika {user_id}")
+            
+            with get_db_cursor() as cursor:
+                # Pobierz przypisane profile aplikacji użytkownika
+                cursor.execute("""
                     SELECT 
-                        ap.profile_id,
-                        ap.app_id,
+                        uap.profile_id,
                         ap.profile_name,
-                        ap.description,
-                        ap.is_default,
-                        ap.created_at,
+                        ap.app_id,
                         a.app_name,
+                        ap.description as profile_description,
                         uap.assigned_at,
                         uap.assigned_by
                     FROM user_application_profiles uap
@@ -75,350 +61,387 @@ def register_user_profiles_endpoints(app):
                     ORDER BY a.app_name, ap.profile_name
                 """, (user_id,))
                 
-                access_data = cur.fetchall()
+                profiles = cursor.fetchall()
                 
-                # Dla każdego dostępu pobierz mapowania ról
-                access_with_mappings = []
-                for access in access_data:
-                    # Pobierz role i uprawnienia dla profilu
-                    cur.execute("""
-                        SELECT 
-                            r.role_id,
-                            r.role_name,
-                            r.description as role_description,
-                            pr.permission_id,
-                            pr.permission_name,
-                            pr.description as permission_description
-                        FROM profile_roles proles
-                        JOIN roles r ON proles.role_id = r.role_id
-                        LEFT JOIN role_permissions rp ON r.role_id = rp.role_id
-                        LEFT JOIN permissions pr ON rp.permission_id = pr.permission_id
-                        WHERE proles.profile_id = %s
-                        ORDER BY r.role_name, pr.permission_name
-                    """, (access['profile_id'],))
+                # Przekształć wyniki do formatu JSON
+                applications = {}
+                for row in profiles:
+                    app_id = row['app_id']
+                    app_name = row['app_name']
                     
-                    role_data = cur.fetchall()
+                    if app_id not in applications:
+                        applications[app_id] = {
+                            "app_id": app_id,
+                            "app_name": app_name,
+                            "profiles": []
+                        }
                     
-                    # Grupuj uprawnienia według ról
-                    role_mappings = {}
-                    for role_row in role_data:
-                        role_id = role_row['role_id']
-                        if role_id not in role_mappings:
-                            role_mappings[role_id] = {
-                                'role_id': role_id,
-                                'role_name': role_row['role_name'],
-                                'description': role_row['role_description'],
-                                'permissions': []
-                            }
-                        
-                        if role_row['permission_id']:
-                            role_mappings[role_id]['permissions'].append({
-                                'permission_id': role_row['permission_id'],
-                                'permission_name': role_row['permission_name'],
-                                'description': role_row['permission_description']
-                            })
-                    
-                    access_dict = dict(access)
-                    access_dict['role_mappings'] = list(role_mappings.values())
-                    access_with_mappings.append(access_dict)
+                    applications[app_id]["profiles"].append({
+                        "profile_id": row['profile_id'],
+                        "profile_name": row['profile_name'],
+                        "description": row['profile_description'],
+                        "assigned_at": row['assigned_at'].isoformat() if row['assigned_at'] else None,
+                        "assigned_by": row['assigned_by']
+                    })
                 
-                return jsonify({
+                result = {
                     "user_id": user_id,
-                    "application_access": access_with_mappings,
-                    "total_count": len(access_with_mappings),
-                    "timestamp": datetime.datetime.utcnow().isoformat()
-                })
+                    "applications": list(applications.values()),
+                    "total_profiles": len(profiles)
+                }
+                
+                logger.info(f"✅ Znaleziono {len(profiles)} profili dla użytkownika {user_id}")
+                return jsonify(result)
                 
         except Exception as e:
-            logger.error(f"Błąd pobierania dostępów użytkownika {user_id}: {e}")
-            return jsonify({"error": str(e)}), 500
-        finally:
-            conn.close()
+            logger.error(f"❌ Błąd pobierania dostępów dla użytkownika {user_id}: {e}")
+            return jsonify({"error": "Błąd pobierania dostępów aplikacji"}), 500
 
     @app.route('/api/users/<user_id>/application-access', methods=['POST'])
-    def assign_application_access_to_user(user_id):
-        """Przypisz dostęp do aplikacji użytkownikowi"""
-        data = request.get_json()
-        if not data or 'profile_id' not in data:
-            return jsonify({"error": "profile_id is required"}), 400
-            
-        profile_id = data['profile_id']
-        assigned_by = data.get('assigned_by', 'system')
-        tenant_id = data.get('tenant_id')  # Opcjonalny - jeśli nie podano, użyj domyślnego
-        
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 500
-            
+    def assign_user_application_access(user_id):
+        """Przypisz profil aplikacji użytkownikowi"""
         try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Sprawdź czy użytkownik istnieje
-                cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
-                if not cur.fetchone():
-                    return jsonify({"error": "User not found"}), 404
+            data = request.get_json()
+            profile_id = data.get('profile_id')
+            assigned_by = data.get('assigned_by', 'api_user')
+            
+            if not profile_id:
+                return jsonify({"error": "profile_id jest wymagane"}), 400
+            
+            logger.info(f"Przypisywanie profilu {profile_id} użytkownikowi {user_id}")
+            
+            with get_db_cursor() as cursor:
+                # Sprawdź czy profil istnieje i pobierz dane
+                cursor.execute("""
+                    SELECT ap.profile_id, ap.profile_name, ap.app_id, a.app_name
+                    FROM application_profiles ap
+                    JOIN applications a ON ap.app_id = a.app_id
+                    WHERE ap.profile_id = %s
+                """, (profile_id,))
                 
-                # Sprawdź czy profil istnieje
-                cur.execute("SELECT profile_id FROM application_profiles WHERE profile_id = %s", (profile_id,))
-                if not cur.fetchone():
-                    return jsonify({"error": "Profile not found"}), 404
-                
-                # Jeśli tenant_id nie podano, pobierz domyślny tenant użytkownika
-                if not tenant_id:
-                    cur.execute("""
-                        SELECT tenant_id 
-                        FROM user_tenants 
-                        WHERE user_id = %s AND is_default = TRUE AND is_active = TRUE
-                        LIMIT 1
-                    """, (user_id,))
-                    
-                    tenant_result = cur.fetchone()
-                    if not tenant_result:
-                        return jsonify({"error": "User has no default tenant assigned"}), 400
-                    
-                    tenant_id = tenant_result['tenant_id']
-                
-                # Sprawdź czy użytkownik ma dostęp do podanego tenanta
-                cur.execute("""
-                    SELECT * FROM user_tenants 
-                    WHERE user_id = %s AND tenant_id = %s AND is_active = TRUE
-                """, (user_id, tenant_id))
-                
-                if not cur.fetchone():
-                    return jsonify({"error": f"User does not have access to tenant {tenant_id}"}), 403
+                profile_data = cursor.fetchone()
+                if not profile_data:
+                    return jsonify({"error": "Profil nie istnieje"}), 404
                 
                 # Sprawdź czy przypisanie już istnieje
-                cur.execute("""
-                    SELECT * FROM user_application_profiles 
-                    WHERE user_id = %s AND profile_id = %s AND tenant_id = %s
-                """, (user_id, profile_id, tenant_id))
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM user_application_profiles
+                    WHERE user_id = %s AND profile_id = %s
+                """, (user_id, profile_id))
                 
-                if cur.fetchone():
-                    return jsonify({"error": "Application access already assigned to user"}), 409
+                count_result = cursor.fetchone()
+                exists = count_result['count'] > 0 if isinstance(count_result, dict) else count_result[0] > 0
                 
-                # Dodaj przypisanie z tenant_id
-                cur.execute("""
-                    INSERT INTO user_application_profiles (user_id, profile_id, tenant_id, assigned_by)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING assigned_at
-                """, (user_id, profile_id, tenant_id, assigned_by))
+                if exists:
+                    return jsonify({"error": "Profil już przypisany do użytkownika"}), 409
                 
-                result = cur.fetchone()
-                conn.commit()
+                # Utwórz przypisanie profilu
+                cursor.execute("""
+                    INSERT INTO user_application_profiles (user_id, profile_id, assigned_at, assigned_by)
+                    VALUES (%s, %s, NOW(), %s)
+                """, (user_id, profile_id, assigned_by))
                 
-                logger.info(f"Przypisano dostęp do aplikacji (profil {profile_id}) użytkownikowi {user_id} w tenant {tenant_id}")
+                # Automatyczne mapowanie profilu na role (nasz nowy system)
+                from profile_role_mapper import apply_profile_to_user_roles
                 
-                return jsonify({
-                    "message": "Application access assigned successfully",
-                    "user_id": user_id,
-                    "profile_id": profile_id,
-                    "tenant_id": tenant_id,
-                    "assigned_at": result['assigned_at'].isoformat(),
-                    "assigned_by": assigned_by
-                }), 201
+                # Pobierz domyślny tenant użytkownika
+                cursor.execute("SELECT tenant_id FROM users WHERE user_id = %s LIMIT 1", (user_id,))
+                tenant_result = cursor.fetchone()
+                if tenant_result:
+                    tenant_id = tenant_result['tenant_id'] if isinstance(tenant_result, dict) else tenant_result[0]
+                    
+                    # Zastosuj mapowanie profilu do ról
+                    mapping_result = apply_profile_to_user_roles(
+                        user_id, 
+                        profile_id, 
+                        profile_data['app_id'], 
+                        tenant_id
+                    )
+                    
+                    result = {
+                        "success": True,
+                        "message": f"Profil {profile_data['profile_name']} przypisany użytkownikowi {user_id}",
+                        "profile": {
+                            "profile_id": profile_id,
+                            "profile_name": profile_data['profile_name'],
+                            "app_id": profile_data['app_id'],
+                            "app_name": profile_data['app_name']
+                        },
+                        "role_mapping": mapping_result
+                    }
+                    
+                    logger.info(f"✅ Profil {profile_id} przypisany i zmapowany na role dla użytkownika {user_id}")
+                    return jsonify(result), 201
+                else:
+                    logger.warning(f"⚠️ Nie znaleziono tenant_id dla użytkownika {user_id}")
+                    return jsonify({"error": "Nie można określić tenant_id użytkownika"}), 400
                 
         except Exception as e:
-            logger.error(f"Błąd przypisywania dostępu aplikacji {profile_id} do użytkownika {user_id}: {e}")
-            conn.rollback()
-            return jsonify({"error": str(e)}), 500
-        finally:
-            conn.close()
+            logger.error(f"❌ Błąd przypisywania profilu użytkownikowi {user_id}: {e}")
+            return jsonify({"error": "Błąd przypisywania profilu"}), 500
 
     @app.route('/api/users/<user_id>/application-access/<profile_id>', methods=['DELETE'])
-    def remove_application_access_from_user(user_id, profile_id):
-        """Usuń dostęp do aplikacji od użytkownika"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 500
-            
+    def remove_user_application_access(user_id, profile_id):
+        """Usuń profil aplikacji od użytkownika"""
         try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Sprawdź czy przypisanie istnieje
-                cur.execute("""
-                    SELECT * FROM user_application_profiles 
+            logger.info(f"Usuwanie profilu {profile_id} od użytkownika {user_id}")
+            
+            with get_db_cursor() as cursor:
+                # Sprawdź czy przypisanie istnieje i pobierz dane profilu
+                cursor.execute("""
+                    SELECT ap.profile_name, ap.app_id, a.app_name
+                    FROM user_application_profiles uap
+                    JOIN application_profiles ap ON uap.profile_id = ap.profile_id
+                    JOIN applications a ON ap.app_id = a.app_id
+                    WHERE uap.user_id = %s AND uap.profile_id = %s
+                """, (user_id, profile_id))
+                
+                profile_data = cursor.fetchone()
+                if not profile_data:
+                    return jsonify({"error": "Przypisanie profilu nie istnieje"}), 404
+                
+                # Usuń przypisanie profilu
+                cursor.execute("""
+                    DELETE FROM user_application_profiles
                     WHERE user_id = %s AND profile_id = %s
                 """, (user_id, profile_id))
                 
-                access_record = cur.fetchone()
-                if not access_record:
-                    return jsonify({"error": "Application access not found"}), 404
+                if cursor.rowcount == 0:
+                    return jsonify({"error": "Nie udało się usunąć przypisania"}), 500
                 
-                # Usuń przypisanie
-                cur.execute("""
-                    DELETE FROM user_application_profiles 
-                    WHERE user_id = %s AND profile_id = %s
-                """, (user_id, profile_id))
+                # Automatyczne usuwanie ról pochodzących z profilu
+                from profile_role_mapper import remove_profile_from_user_roles
                 
-                conn.commit()
-                
-                logger.info(f"Usunięto dostęp do aplikacji (profil {profile_id}) od użytkownika {user_id}")
-                
-                return jsonify({
-                    "message": "Application access removed successfully",
-                    "user_id": user_id,
-                    "profile_id": profile_id
-                }), 200
+                # Pobierz domyślny tenant użytkownika z tabeli user_tenants
+                cursor.execute("""
+                    SELECT tenant_id FROM user_tenants 
+                    WHERE user_id = %s AND is_default = true AND is_active = true
+                    LIMIT 1
+                """, (user_id,))
+                tenant_result = cursor.fetchone()
+                if tenant_result:
+                    tenant_id = tenant_result['tenant_id'] if isinstance(tenant_result, dict) else tenant_result[0]
+                    
+                    # Usuń role pochodzące z profilu
+                    removal_result = remove_profile_from_user_roles(
+                        user_id, 
+                        profile_id, 
+                        profile_data['app_id'], 
+                        tenant_id
+                    )
+                    
+                    result = {
+                        "success": True,
+                        "message": f"Profil {profile_data['profile_name']} usunięty od użytkownika {user_id}",
+                        "removed_profile": {
+                            "profile_id": profile_id,
+                            "profile_name": profile_data['profile_name'],
+                            "app_id": profile_data['app_id'],
+                            "app_name": profile_data['app_name']
+                        },
+                        "role_removal": removal_result
+                    }
+                    
+                    logger.info(f"✅ Profil {profile_id} i role usunięte dla użytkownika {user_id}")
+                    return jsonify(result)
+                else:
+                    logger.warning(f"⚠️ Nie znaleziono tenant_id dla użytkownika {user_id}")
+                    return jsonify({"error": "Nie można określić tenant_id użytkownika"}), 400
                 
         except Exception as e:
-            logger.error(f"Błąd usuwania dostępu aplikacji {profile_id} od użytkownika {user_id}: {e}")
-            conn.rollback()
-            return jsonify({"error": str(e)}), 500
-        finally:
-            conn.close()
+            logger.error(f"❌ Błąd usuwania profilu od użytkownika {user_id}: {e}")
+            return jsonify({"error": "Błąd usuwania profilu"}), 500
 
     @app.route('/api/users/<user_id>/companies', methods=['GET'])
     def get_user_companies(user_id):
-        """Pobierz wszystkie firmy przypisane do użytkownika (wspólny słownik)"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 500
-            
+        """Pobierz firmy przypisane do użytkownika"""
         try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Pobierz firmy użytkownika z pełnymi danymi
-                cur.execute("""
+            logger.info(f"Pobieranie firm dla użytkownika {user_id}")
+            
+            with get_db_cursor() as cursor:
+                # Pobierz firmy przypisane do użytkownika
+                cursor.execute("""
                     SELECT 
-                        uc.id as assignment_id,
-                        uc.user_id,
                         uc.company_id,
-                        uc.assigned_by,
-                        uc.assigned_at,
-                        uc.notes,
-                        uc.is_active,
                         c.company_name,
-                        c.company_code,
-                        c.description as company_description,
-                        c.nip,
-                        c.status as company_status,
+                        c.tax_number,
                         c.tenant_id,
-                        c.created_at as company_created_at,
-                        c.updated_at as company_updated_at
+                        uc.assigned_at,
+                        uc.assigned_by
                     FROM user_companies uc
                     JOIN companies c ON uc.company_id = c.company_id
-                    WHERE uc.user_id = %s AND uc.is_active = TRUE
+                    WHERE uc.user_id = %s
                     ORDER BY c.company_name
                 """, (user_id,))
                 
-                companies_data = cur.fetchall()
+                companies = cursor.fetchall()
                 
-                return jsonify({
+                # Przekształć wyniki do formatu JSON
+                result_companies = []
+                for row in companies:
+                    result_companies.append({
+                        "company_id": row['company_id'],
+                        "company_name": row['company_name'],
+                        "tax_number": row['tax_number'],
+                        "tenant_id": row['tenant_id'],
+                        "assigned_at": row['assigned_at'].isoformat() if row['assigned_at'] else None,
+                        "assigned_by": row['assigned_by']
+                    })
+                
+                result = {
                     "user_id": user_id,
-                    "companies": [dict(company) for company in companies_data],
-                    "total_count": len(companies_data),
-                    "timestamp": datetime.datetime.utcnow().isoformat()
-                })
+                    "companies": result_companies,
+                    "total_companies": len(companies)
+                }
+                
+                logger.info(f"✅ Znaleziono {len(companies)} firm dla użytkownika {user_id}")
+                return jsonify(result)
                 
         except Exception as e:
-            logger.error(f"Błąd pobierania firm użytkownika {user_id}: {e}")
-            return jsonify({"error": str(e)}), 500
-        finally:
-            conn.close()
+            logger.error(f"❌ Błąd pobierania firm dla użytkownika {user_id}: {e}")
+            return jsonify({"error": "Błąd pobierania firm"}), 500
 
     @app.route('/api/users/<user_id>/companies', methods=['POST'])
-    def assign_company_to_user(user_id):
-        """Przypisz firmę do użytkownika"""
-        data = request.get_json()
-        if not data or 'company_id' not in data:
-            return jsonify({"error": "company_id is required"}), 400
-            
-        company_id = data['company_id']
-        assigned_by = data.get('assigned_by', 'system')
-        notes = data.get('notes', '')
-        
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 500
-            
+    def assign_user_company(user_id):
+        """Przypisz firmę użytkownikowi"""
         try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Sprawdź czy użytkownik istnieje
-                cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
-                if not cur.fetchone():
-                    return jsonify({"error": "User not found"}), 404
-                
+            data = request.get_json()
+            company_id = data.get('company_id')
+            assigned_by = data.get('assigned_by', 'api_user')
+            
+            if not company_id:
+                return jsonify({"error": "company_id jest wymagane"}), 400
+            
+            logger.info(f"Przypisywanie firmy {company_id} użytkownikowi {user_id}")
+            
+            with get_db_cursor() as cursor:
                 # Sprawdź czy firma istnieje
-                cur.execute("SELECT company_id FROM companies WHERE company_id = %s", (company_id,))
-                if not cur.fetchone():
-                    return jsonify({"error": "Company not found"}), 404
+                cursor.execute("""
+                    SELECT company_id, company_name, tax_number
+                    FROM companies WHERE company_id = %s
+                """, (company_id,))
                 
-                # Sprawdź czy przypisanie już istnieje (aktywne)
-                cur.execute("""
-                    SELECT * FROM user_companies 
-                    WHERE user_id = %s AND company_id = %s AND is_active = TRUE
-                """, (user_id, company_id))
+                company_data = cursor.fetchone()
+                if not company_data:
+                    return jsonify({"error": "Firma nie istnieje"}), 404
                 
-                if cur.fetchone():
-                    return jsonify({"error": "Company already assigned to user"}), 409
-                
-                # Dodaj przypisanie
-                cur.execute("""
-                    INSERT INTO user_companies (user_id, company_id, assigned_by, notes)
-                    VALUES (%s, %s, %s, %s)
-                    RETURNING id, assigned_at
-                """, (user_id, company_id, assigned_by, notes))
-                
-                result = cur.fetchone()
-                conn.commit()
-                
-                logger.info(f"Przypisano firmę {company_id} do użytkownika {user_id}")
-                
-                return jsonify({
-                    "message": "Company assigned successfully",
-                    "assignment_id": str(result['id']),
-                    "user_id": user_id,
-                    "company_id": company_id,
-                    "assigned_at": result['assigned_at'].isoformat(),
-                    "assigned_by": assigned_by,
-                    "notes": notes
-                }), 201
-                
-        except Exception as e:
-            logger.error(f"Błąd przypisywania firmy {company_id} do użytkownika {user_id}: {e}")
-            conn.rollback()
-            return jsonify({"error": str(e)}), 500
-        finally:
-            conn.close()
-
-    @app.route('/api/users/<user_id>/companies/<company_id>', methods=['DELETE'])
-    def remove_company_from_user(user_id, company_id):
-        """Usuń firmę od użytkownika (soft delete - ustawia is_active = FALSE)"""
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 500
-            
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Sprawdź czy przypisanie istnieje
-                cur.execute("""
-                    SELECT * FROM user_companies 
-                    WHERE user_id = %s AND company_id = %s AND is_active = TRUE
-                """, (user_id, company_id))
-                
-                company_record = cur.fetchone()
-                if not company_record:
-                    return jsonify({"error": "Company assignment not found"}), 404
-                
-                # Soft delete - ustaw is_active = FALSE
-                cur.execute("""
-                    UPDATE user_companies 
-                    SET is_active = FALSE 
+                # Sprawdź czy przypisanie już istnieje
+                cursor.execute("""
+                    SELECT COUNT(*) as count FROM user_companies
                     WHERE user_id = %s AND company_id = %s
                 """, (user_id, company_id))
                 
-                conn.commit()
+                count_result = cursor.fetchone()
+                exists = count_result['count'] > 0 if isinstance(count_result, dict) else count_result[0] > 0
                 
-                logger.info(f"Usunięto firmę {company_id} od użytkownika {user_id}")
+                if exists:
+                    return jsonify({"error": "Firma już przypisana do użytkownika"}), 409
                 
-                return jsonify({
-                    "message": "Company removed successfully",
-                    "user_id": user_id,
-                    "company_id": company_id
-                }), 200
+                # Utwórz przypisanie firmy
+                cursor.execute("""
+                    INSERT INTO user_companies (user_id, company_id, assigned_at, assigned_by)
+                    VALUES (%s, %s, NOW(), %s)
+                """, (user_id, company_id, assigned_by))
+                
+                result = {
+                    "success": True,
+                    "message": f"Firma {company_data['company_name']} przypisana użytkownikowi {user_id}",
+                    "company": {
+                        "company_id": company_id,
+                        "company_name": company_data['company_name'],
+                        "tax_number": company_data['tax_number']
+                    }
+                }
+                
+                logger.info(f"✅ Firma {company_id} przypisana użytkownikowi {user_id}")
+                return jsonify(result), 201
                 
         except Exception as e:
-            logger.error(f"Błąd usuwania firmy {company_id} od użytkownika {user_id}: {e}")
-            conn.rollback()
-            return jsonify({"error": str(e)}), 500
-        finally:
-            conn.close()
+            logger.error(f"❌ Błąd przypisywania firmy użytkownikowi {user_id}: {e}")
+            return jsonify({"error": "Błąd przypisywania firmy"}), 500
 
-    logger.info("✅ User profiles management endpoints registered") 
+    @app.route('/api/users/<user_id>/companies/<company_id>', methods=['DELETE'])
+    def remove_user_company(user_id, company_id):
+        """Usuń firmę od użytkownika"""
+        try:
+            logger.info(f"Usuwanie firmy {company_id} od użytkownika {user_id}")
+            
+            with get_db_cursor() as cursor:
+                # Sprawdź czy przypisanie istnieje i pobierz dane firmy
+                cursor.execute("""
+                    SELECT c.company_name, c.tax_number
+                    FROM user_companies uc
+                    JOIN companies c ON uc.company_id = c.company_id
+                    WHERE uc.user_id = %s AND uc.company_id = %s
+                """, (user_id, company_id))
+                
+                company_data = cursor.fetchone()
+                if not company_data:
+                    return jsonify({"error": "Przypisanie firmy nie istnieje"}), 404
+                
+                # Usuń przypisanie firmy
+                cursor.execute("""
+                    DELETE FROM user_companies
+                    WHERE user_id = %s AND company_id = %s
+                """, (user_id, company_id))
+                
+                if cursor.rowcount == 0:
+                    return jsonify({"error": "Nie udało się usunąć przypisania"}), 500
+                
+                result = {
+                    "success": True,
+                    "message": f"Firma {company_data['company_name']} usunięta od użytkownika {user_id}",
+                    "removed_company": {
+                        "company_id": company_id,
+                        "company_name": company_data['company_name'],
+                        "tax_number": company_data['tax_number']
+                    }
+                }
+                
+                logger.info(f"✅ Firma {company_id} usunięta dla użytkownika {user_id}")
+                return jsonify(result)
+                
+        except Exception as e:
+            logger.error(f"❌ Błąd usuwania firmy od użytkownika {user_id}: {e}")
+            return jsonify({"error": "Błąd usuwania firmy"}), 500
+
+    @app.route('/api/users/<user_id>/sync-profiles', methods=['POST'])
+    def sync_user_profiles_to_roles_endpoint(user_id):
+        """Synchronizuj profile użytkownika z jego rolami - endpoint dla pojedynczego użytkownika"""
+        try:
+            logger.info(f"Rozpoczynam synchronizację profili dla użytkownika {user_id}")
+            
+            # Pobierz domyślny tenant użytkownika z tabeli user_tenants
+            with get_db_cursor() as cursor:
+                cursor.execute("""
+                    SELECT tenant_id FROM user_tenants 
+                    WHERE user_id = %s AND is_default = true AND is_active = true
+                    LIMIT 1
+                """, (user_id,))
+                tenant_result = cursor.fetchone()
+                
+                if not tenant_result:
+                    return jsonify({"error": "Użytkownik nie ma przypisanego domyślnego tenanta"}), 404
+                
+                tenant_id = tenant_result['tenant_id'] if isinstance(tenant_result, dict) else tenant_result[0]
+            
+            # Wywołaj funkcję synchronizującą profile do ról
+            result = sync_user_profiles_to_roles(user_id, tenant_id)
+            
+            if result.get("success"):
+                logger.info(f"✅ Synchronizacja profili zakończona dla użytkownika {user_id}")
+                return jsonify(result), 200
+            else:
+                logger.error(f"❌ Błąd synchronizacji profili dla użytkownika {user_id}: {result.get('message')}")
+                return jsonify(result), 500
+                
+        except Exception as e:
+            logger.error(f"❌ Błąd endpoint synchronizacji dla użytkownika {user_id}: {e}")
+            return jsonify({
+                "success": False,
+                "message": f"Błąd synchronizacji profili: {e}",
+                "error": str(e)
+            }), 500
+
+    logger.info("✅ User profiles endpoints registered")
+

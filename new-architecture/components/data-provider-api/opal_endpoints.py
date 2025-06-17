@@ -10,7 +10,7 @@ Task 36 - Subtask 1: External Data Source endpoints w Data Provider API
 
 import os
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from flask import request, jsonify
 import datetime
 
@@ -21,6 +21,13 @@ try:
     OPAL_JWT_AVAILABLE = True
 except ImportError:
     OPAL_JWT_AVAILABLE = False
+
+# Import database integration
+try:
+    from database_integration import get_all_tenants_from_database, is_database_available
+    DATABASE_INTEGRATION_AVAILABLE = True
+except ImportError:
+    DATABASE_INTEGRATION_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +149,90 @@ def get_data_source_config_for_client(client_claims: Dict[str, Any], model2_avai
     logger.info(f"Generated {len(all_entries)} data source entries for client {client_id}")
     return data_source_config
 
+def get_tenant_discovery_config(model2_available: bool = False) -> Dict[str, Any]:
+    """
+    Generuje konfigurację data sources dla wszystkich tenantów (Tenant Discovery API)
+    
+    Args:
+        model2_available: Czy Model 2 jest dostępny
+        
+    Returns:
+        Dict z konfiguracją dla wszystkich tenantów
+    """
+    logger.info("🔍 Generating Tenant Discovery configuration")
+    
+    # Pobierz listę wszystkich tenantów z bazy danych
+    tenant_ids = []
+    if DATABASE_INTEGRATION_AVAILABLE and is_database_available():
+        tenant_ids = get_all_tenants_from_database()
+        logger.info(f"Found {len(tenant_ids)} tenants in database: {tenant_ids}")
+    else:
+        # Fallback - jeśli baza niedostępna, użyj domyślnego tenanta
+        tenant_ids = ["tenant1"]
+        logger.warning("Database not available, using fallback tenant list")
+    
+    # Bazowy URL dla tego Data Provider API
+    base_url = os.environ.get("DATA_PROVIDER_BASE_URL", "http://data-provider-api:8110")
+    
+    tenants_config = []
+    
+    for tenant_id in tenant_ids:
+        # Konfiguracja dla Model 1 (Enhanced ACL)
+        model1_entries = [
+            {
+                "url": f"{base_url}/tenants/{tenant_id}/acl",
+                "dst_path": f"/acl/{tenant_id}",  # Każdy tenant ma osobny dst_path
+                "topics": ["multi_tenant_data"],  # JEDEN TOPIC dla wszystkich tenantów
+                "config": {
+                    "headers": {
+                        "Accept": "application/json",
+                        "User-Agent": "OPAL-Bootstrap",
+                        "X-Tenant-ID": tenant_id
+                    }
+                }
+            }
+        ]
+        
+        # Konfiguracja dla Model 2 (jeśli dostępne)
+        model2_entries = []
+        if model2_available:
+            model2_entries = [
+                {
+                    "url": f"{base_url}/v2/authorization",
+                    "dst_path": f"/authorization/{tenant_id}",  # Każdy tenant ma osobny dst_path
+                    "topics": ["multi_tenant_data"],  # JEDEN TOPIC dla wszystkich tenantów
+                    "config": {
+                        "headers": {
+                            "Accept": "application/json",
+                            "User-Agent": "OPAL-Bootstrap",
+                            "X-Tenant-ID": tenant_id
+                        }
+                    }
+                }
+            ]
+        
+        # Połącz wszystkie entries dla tego tenanta
+        all_entries = model1_entries + model2_entries
+        
+        tenants_config.append({
+            "tenant_id": tenant_id,
+            "data_source_config": {
+                "entries": all_entries
+            }
+        })
+    
+    result = {
+        "tenants": tenants_config,
+        "total_tenants": len(tenants_config),
+        "timestamp": datetime.datetime.utcnow().isoformat(),
+        "base_url": base_url,
+        "model1_support": True,
+        "model2_support": model2_available
+    }
+    
+    logger.info(f"✅ Generated Tenant Discovery config for {len(tenants_config)} tenants")
+    return result
+
 def register_opal_endpoints(app, model2_available: bool = False):
     """
     Rejestruje OPAL External Data Sources endpoints w Flask app
@@ -255,6 +346,33 @@ def register_opal_endpoints(app, model2_available: bool = False):
                 "details": "Failed to generate data source configuration"
             }), 500
 
+    @app.route("/data/tenants-bootstrap", methods=["GET"])
+    def tenant_discovery_api():
+        """
+        Tenant Discovery API - Bootstrap endpoint
+        
+        Zwraca konfigurację data sources dla wszystkich tenantów w systemie.
+        Używane przez OPAL Server do cold-start bootstrap'owania wszystkich tenantów naraz.
+        
+        Returns:
+            JSON: Konfiguracja data sources dla wszystkich tenantów
+        """
+        logger.info("🔍 Tenant Discovery API request received")
+        
+        try:
+            discovery_config = get_tenant_discovery_config(model2_available)
+            
+            logger.info(f"✅ Returning Tenant Discovery config for {discovery_config['total_tenants']} tenants")
+            return jsonify(discovery_config), 200
+            
+        except Exception as e:
+            logger.error(f"❌ Error generating Tenant Discovery config: {e}")
+            return jsonify({
+                "error": "Internal server error",
+                "details": "Failed to generate tenant discovery configuration",
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }), 500
+
     @app.route("/opal/health", methods=["GET"])
     def opal_health_check():
         """
@@ -267,11 +385,13 @@ def register_opal_endpoints(app, model2_available: bool = False):
         
         opal_status = {
             "opal_external_data_sources": True,
+            "tenant_discovery_api": True,
             "jwt_validation_enabled": not DISABLE_JWT_VALIDATION,
             "jwt_validation_available": OPAL_JWT_AVAILABLE,
             "public_key_configured": bool(OPAL_PUBLIC_KEY),
             "model1_support": True,
             "model2_support": model2_available,
+            "database_integration": DATABASE_INTEGRATION_AVAILABLE,
             "timestamp": datetime.datetime.utcnow().isoformat()
         }
         
