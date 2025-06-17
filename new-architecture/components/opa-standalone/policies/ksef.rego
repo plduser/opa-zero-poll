@@ -6,29 +6,39 @@ import data.rbac  # Import bazowej polityki RBAC
 # Główna funkcja autoryzacji dla aplikacji KSEF
 default allow := false
 
-# Główne reguły autoryzacji dla KSEF - bazują na rolach użytkowników zgodnych z model2
+# Główne reguły autoryzacji dla KSEF - używamy rzeczywistych danych z /acl/{tenant}
 
 allow if {
+    # Sprawdzamy czy użytkownik istnieje w rzeczywistych danych
+    user_data := data.acl[input.tenant].data.users[input.user]
+    
     # ksiegowa - ma dostęp do wszystkich faktury (zakupowe i sprzedażowe)
-    "ksiegowa" in data.users.users[input.tenant][input.user].roles
+    ksef_roles := user_data.roles.ksef
+    "ksiegowa" in ksef_roles
     input.action in ["view_invoices_purchase", "view_invoices_sales", "manage_contractors", "export_to_symfonia"]
 }
 
 allow if {
     # handlowiec - tylko faktury sprzedażowe  
-    "handlowiec" in data.users.users[input.tenant][input.user].roles
+    user_data := data.acl[input.tenant].data.users[input.user]
+    ksef_roles := user_data.roles.ksef
+    "handlowiec" in ksef_roles
     input.action in ["view_invoices_sales"]
 }
 
 allow if {
     # zakupowiec - tylko faktury zakupowe
-    "zakupowiec" in data.users.users[input.tenant][input.user].roles
+    user_data := data.acl[input.tenant].data.users[input.user]
+    ksef_roles := user_data.roles.ksef
+    "zakupowiec" in ksef_roles
     input.action in ["view_invoices_purchase"]
 }
 
 allow if {
     # administrator - pełny dostęp do wszystkiego
-    "administrator" in data.users.users[input.tenant][input.user].roles
+    user_data := data.acl[input.tenant].data.users[input.user]
+    ksef_roles := user_data.roles.ksef
+    "administrator" in ksef_roles
     # Administrator może wszystko - brak ograniczeń na akcje
 }
 
@@ -38,9 +48,15 @@ decision := {
     "user": input.user,
     "tenant": input.tenant,
     "action": input.action,
-    "user_roles": data.users.users[input.tenant][input.user].roles,
+    "user_roles": user_roles_safe,
     "reason": reason
 }
 
+# Bezpieczne pobieranie ról użytkownika
+user_roles_safe := roles if {
+    user_data := data.acl[input.tenant].data.users[input.user]
+    roles := user_data.roles.ksef
+} else = [] if true
+
 reason := "Access granted - user has required role" if allow
-reason := sprintf("Access denied - user roles %v do not allow action '%s'", [data.users.users[input.tenant][input.user].roles, input.action]) if not allow 
+reason := sprintf("Access denied - user roles %v do not allow action '%s'", [user_roles_safe, input.action]) if not allow 

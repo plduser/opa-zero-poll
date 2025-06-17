@@ -1,1 +1,0 @@
-{"users":{"tenant1":{"user123":{"name":"Jan Kowalski","roles":["ksiegowa"]},"user456":{"name":"Anna Nowak","roles":["handlowiec"]},"user789":{"name":"Piotr Admin","roles":["administrator"]},"user111":{"name":"Maria Zakupy","roles":["zakupowiec"]}},"tenant2":{"user999":{"name":"Maria Testowa","roles":["ksiegowa","handlowiec"]}}}}
