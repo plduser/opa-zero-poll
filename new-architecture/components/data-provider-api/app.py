@@ -391,6 +391,79 @@ def debug_user_access(user_id, tenant_id):
         logger.error(f"Debug user_access failed: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route("/opal/full-snapshot", methods=["GET"])
+def get_opal_full_snapshot():
+    """
+    Endpoint dla OPAL_ALL_DATA_URL - zwraca pełną strukturę danych dla wszystkich tenantów.
+    Dane są już w gotowym formacie JSON do załadowania bezpośrednio do OPA data document.
+    """
+    logger.info("OPAL Full Snapshot requested")
+    
+    if not (DATABASE_INTEGRATION_AVAILABLE and is_database_available()):
+        logger.error("Database integration not available for OPAL full snapshot")
+        return jsonify({
+            "error": "Database not available"
+        }), 503
+    
+    try:
+        # Pobierz wszystkich tenantów z bazy danych
+        tenant_ids = get_all_tenants_from_database()
+        logger.info(f"Found {len(tenant_ids)} tenants: {tenant_ids}")
+        
+        # Buduj pełną strukturę danych dla OPA
+        full_data = {
+            "acl": {},  # Struktura ACL dla wszystkich tenantów
+            "metadata": {
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace('+00:00', 'Z'),
+                "source": "data-provider-api",
+                "tenants_count": len(tenant_ids)
+            }
+        }
+        
+        # Dla każdego tenanta pobierz ACL dane
+        for tenant_id in tenant_ids:
+            try:
+                logger.info(f"Processing tenant: {tenant_id}")
+                
+                # Pobierz ACL dla tego tenanta z Model 2
+                acl_data = get_tenant_acl_from_database(tenant_id)
+                
+                if acl_data:
+                    # Dodaj dane ACL do struktury pod ścieżką /acl/{tenant_id}
+                    full_data["acl"][tenant_id] = acl_data
+                    logger.info(f"Added ACL data for tenant {tenant_id}")
+                else:
+                    logger.warning(f"No ACL data found for tenant {tenant_id}")
+                    # Nawet jeśli brak danych, dodaj pustą strukturę
+                    full_data["acl"][tenant_id] = {
+                        "tenant_id": tenant_id,
+                        "users": {},
+                        "roles": {},
+                        "permissions": {}
+                    }
+                    
+            except Exception as e:
+                logger.error(f"Error processing tenant {tenant_id}: {str(e)}")
+                # W przypadku błędu, dodaj placeholder
+                full_data["acl"][tenant_id] = {
+                    "tenant_id": tenant_id,
+                    "error": f"Failed to load data: {str(e)}",
+                    "users": {},
+                    "roles": {},
+                    "permissions": {}
+                }
+        
+        logger.info(f"OPAL Full Snapshot generated with {len(full_data['acl'])} tenants")
+        
+        # Zwróć gotowe dane JSON - format OPAL_ALL_DATA_URL
+        return jsonify(full_data)
+        
+    except Exception as e:
+        logger.error(f"Error generating OPAL full snapshot: {str(e)}")
+        return jsonify({
+            "error": f"Failed to generate snapshot: {str(e)}"
+        }), 500
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8110))
     debug = os.environ.get("DEBUG", "false").lower() == "true"

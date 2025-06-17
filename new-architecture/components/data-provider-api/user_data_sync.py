@@ -187,7 +187,7 @@ class UserDataSyncService:
             "entries": [
                 {
                     "url": f"{DATA_PROVIDER_API_URL}/tenants/{tenant_id}/acl",
-                    "topics": ["multi_tenant_user_data"],  # Wspólny topic dla użytkowników/ról/uprawnień
+                    "topics": ["multi_tenant_data"],  # Wspólny topic dla użytkowników/ról/uprawnień
                     "dst_path": f"/acl/{tenant_id}",  # Hierarchiczne oddzielenie tenantów
                     "config": {
                         "tenant_id": tenant_id,
@@ -220,7 +220,7 @@ class UserDataSyncService:
             "entries": [
                 {
                     "url": f"{DATA_PROVIDER_API_URL}/tenants/{tenant_id}/acl",
-                    "topics": ["multi_tenant_user_data"],  # Wspólny topic dla użytkowników/ról/uprawnień
+                    "topics": ["multi_tenant_data"],  # Wspólny topic dla użytkowników/ról/uprawnień
                     "dst_path": f"/acl/{tenant_id}",
                     "config": {
                         "tenant_id": tenant_id,
@@ -254,7 +254,7 @@ class UserDataSyncService:
             "entries": [
                 {
                     "url": f"{DATA_PROVIDER_API_URL}/tenants/{tenant_id}/acl",
-                    "topics": ["multi_tenant_user_data"],  # Wspólny topic dla użytkowników/ról/uprawnień
+                    "topics": ["multi_tenant_data"],  # Wspólny topic dla użytkowników/ról/uprawnień
                     "dst_path": f"/acl/{tenant_id}",
                     "config": {
                         "tenant_id": tenant_id,

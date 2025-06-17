@@ -120,7 +120,7 @@ def register_users_endpoints(app):
                         logger.info(f"🔍 DEBUG: USER_DATA_SYNC_AVAILABLE={USER_DATA_SYNC_AVAILABLE}, sync_service={sync_service}")
                         if USER_DATA_SYNC_AVAILABLE and sync_service and publish_translated_event:
                             # Pobierz tenant_id z request lub użyj domyślnego
-                            tenant_id = request.args.get("tenant_id", "tenant1")
+                            tenant_id = request.headers.get("X-Tenant-ID", request.args.get("tenant_id", "tenant1"))
                             logger.info(f"🔍 DEBUG: Attempting to send OPAL notification for deletion - tenant_id={tenant_id}, user_id={user_id}")
                             
                             # Tradycyjne powiadomienie
@@ -258,7 +258,7 @@ def register_users_endpoints(app):
                 new_user = cur.fetchone()
                 
                 # DODAJ WPIS DO user_tenants (KLUCZOWY BRAKUJĄCY KROK!)
-                tenant_id = data.get("tenant_id", "tenant1")  # Default lub z request
+                tenant_id = request.headers.get("X-Tenant-ID", data.get("tenant_id", "tenant1"))  # Header ma priorytet
                 logger.info(f"🔥 DEBUG: Dodaję wpis do user_tenants - user_id={user_id}, tenant_id={tenant_id}")
                 
                 cur.execute("""
@@ -446,7 +446,7 @@ def register_users_endpoints(app):
     @app.route("/api/users/<user_id>/roles/<profile_id>", methods=["DELETE"])
     def remove_user_role(user_id, profile_id):
         """Usuwa rolę użytkownikowi"""
-        tenant_id = request.args.get("tenant_id", "tenant1")
+        tenant_id = request.headers.get("X-Tenant-ID", request.args.get("tenant_id", "tenant1"))
         
         logger.info(f"Removing role profile {profile_id} from user {user_id} in tenant {tenant_id}")
         
