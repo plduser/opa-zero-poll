@@ -44,4 +44,5 @@ name = "frontend"
 source = "."
 
 [services.variables]
-DATA_PROVIDER_API_URL = "${{ services.data-provider-api.url }}" 
+# TODO: Zamień na faktyczny URL z Railway dashboard
+DATA_PROVIDER_API_URL = "opa-zero-poll-production-1934.up.railway.app" 
