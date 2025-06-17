@@ -1,3 +1,5 @@
+"use client"
+
 import { Menu, ChevronDown, Settings, User } from "lucide-react"
 import { useState, useEffect } from "react"
 import { AppSwitcher } from "./app-switcher"
