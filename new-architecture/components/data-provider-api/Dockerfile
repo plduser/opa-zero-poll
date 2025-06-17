@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Skopiuj kod aplikacji
 COPY app.py .
 COPY init_db.py .
+COPY start.sh .
 COPY opal_endpoints.py .
 COPY database_integration.py .
 COPY users_endpoints.py .
@@ -41,8 +42,11 @@ USER appuser
 ENV PORT=8110
 ENV DEBUG=false
 
+# Ustaw uprawnienia wykonywalne dla skryptu startowego
+RUN chmod +x start.sh
+
 # Odsłoń port
 EXPOSE 8110
 
-# Uruchom aplikację
-CMD ["python", "app.py"] 
+# Domyślna komenda startowa - Railway może to nadpisać
+CMD ["./start.sh"] 

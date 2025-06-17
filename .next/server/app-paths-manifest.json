@@ -1,6 +1,5 @@
 {
-  "/api/users/[userId]/application-access/route": "app/api/users/[userId]/application-access/route.js",
-  "/api/users/[userId]/companies/route": "app/api/users/[userId]/companies/route.js",
-  "/_not-found/page": "app/_not-found/page.js",
+  "/api/users/route": "app/api/users/route.js",
+  "/api/applications/route": "app/api/applications/route.js",
   "/users/page": "app/users/page.js"
 }
