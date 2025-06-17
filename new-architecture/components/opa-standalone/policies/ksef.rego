@@ -12,33 +12,33 @@ allow if {
     # Sprawdzamy czy użytkownik istnieje w rzeczywistych danych
     user_data := data.acl[input.tenant].data.users[input.user]
     
-    # ksiegowa - ma dostęp do wszystkich faktury (zakupowe i sprzedażowe)
+    # Ksiegowa - ma dostęp do wszystkich faktury (zakupowe i sprzedażowe)
     ksef_roles := user_data.roles.ksef
-    "ksiegowa" in ksef_roles
+    "Ksiegowa" in ksef_roles
     input.action in ["view_invoices_purchase", "view_invoices_sales", "manage_contractors", "export_to_symfonia"]
 }
 
 allow if {
-    # handlowiec - tylko faktury sprzedażowe  
+    # Handlowiec - tylko faktury sprzedażowe  
     user_data := data.acl[input.tenant].data.users[input.user]
     ksef_roles := user_data.roles.ksef
-    "handlowiec" in ksef_roles
+    "Handlowiec" in ksef_roles
     input.action in ["view_invoices_sales"]
 }
 
 allow if {
-    # zakupowiec - tylko faktury zakupowe
+    # Zakupowiec - tylko faktury zakupowe
     user_data := data.acl[input.tenant].data.users[input.user]
     ksef_roles := user_data.roles.ksef
-    "zakupowiec" in ksef_roles
+    "Zakupowiec" in ksef_roles
     input.action in ["view_invoices_purchase"]
 }
 
 allow if {
-    # administrator - pełny dostęp do wszystkiego
+    # Administrator - pełny dostęp do wszystkiego
     user_data := data.acl[input.tenant].data.users[input.user]
     ksef_roles := user_data.roles.ksef
-    "administrator" in ksef_roles
+    "Administrator" in ksef_roles
     # Administrator może wszystko - brak ograniczeń na akcje
 }
 

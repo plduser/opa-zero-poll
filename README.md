@@ -258,7 +258,20 @@ curl "http://localhost:8181/v1/data/rbac/allow" \
 
 # Model 2 (hybrid RBAC + REBAC)
 curl "http://localhost:8110/v2/users/user42/permissions?app=fk&action=view_entry&company_id=company1&tenant_id=tenant125"
+
+# KSEF Policy Test (z rzeczywistymi danymi)
+curl -X POST http://localhost:8181/v1/data/ksef/allow \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"user": "user_1750141671", "tenant": "tenant1", "action": "view_invoices_purchase"}}'
 ```
+
+### Kompletne Testowanie End-to-End
+
+Kompletne scenariusze testowe obejmujące tworzenie tenantów, zarządzanie użytkownikami i propagację danych do OPA:
+- [Scenariusze End-to-End](docs/END_TO_END_SCENARIOS.md) - Pełne przepływy pracy z komendami CURL, monitoringiem logów i diagnostyką
+
+### Testy Konkretnych Funkcjonalności
+- [Testy Permission Event Translator](docs/PERMISSION_EVENT_TRANSLATOR_TESTS.md) - Szczegółowe testy systemu notyfikacji Permission Event Translator
 
 ---
 

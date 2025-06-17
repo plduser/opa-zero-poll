@@ -1,0 +1,389 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Data Provider API",
+    "description": "Multi-tenant ACL data provider dla OPA z integracją bazy danych PostgreSQL. Obsługuje Enhanced Model 1 (RBAC), zarządzanie użytkownikami, firmami, profilami aplikacji oraz integrację z OPAL External Data Sources.",
+    "version": "3.1.0",
+    "contact": {
+      "name": "Portal Symfonia Team"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8110",
+      "description": "Development server"
+    },
+    {
+      "url": "http://data-provider-api:8110",
+      "description": "Docker container"
+    }
+  ],
+  "paths": {
+    "/": {
+      "get": {
+        "summary": "Informacje o API",
+        "description": "Zwraca podstawowe informacje o serwisie Data Provider API",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Informacje o serwisie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "service": {"type": "string"},
+                    "version": {"type": "string"},
+                    "description": {"type": "string"},
+                    "database_integration": {"type": "boolean"},
+                    "timestamp": {"type": "string", "format": "date-time"}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "description": "Sprawdza stan zdrowia serwisu i dostępność bazy danych",
+        "tags": ["System"],
+        "responses": {
+          "200": {
+            "description": "Serwis działa poprawnie"
+          }
+        }
+      }
+    },
+    "/tenants": {
+      "get": {
+        "summary": "Lista wszystkich tenantów",
+        "description": "Zwraca listę wszystkich dostępnych tenantów w systemie",
+        "tags": ["Tenants"],
+        "responses": {
+          "200": {
+            "description": "Lista tenantów"
+          }
+        }
+      }
+    },
+    "/tenants/{tenant_id}/acl": {
+      "get": {
+        "summary": "Dane ACL dla tenanta",
+        "description": "Zwraca dane ACL (Enhanced Model 1) dla określonego tenanta",
+        "tags": ["ACL", "Tenants"],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Identyfikator tenanta"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dane ACL tenanta"
+          },
+          "404": {
+            "description": "Tenant nie został znaleziony"
+          }
+        }
+      }
+    },
+    "/api/users": {
+      "get": {
+        "summary": "Lista użytkowników",
+        "description": "Zwraca listę wszystkich użytkowników w systemie",
+        "tags": ["Users"],
+        "responses": {
+          "200": {
+            "description": "Lista użytkowników"
+          }
+        }
+      },
+      "post": {
+        "summary": "Utworz nowego użytkownika",
+        "tags": ["Users"],
+        "responses": {
+          "201": {
+            "description": "Użytkownik utworzony pomyślnie"
+          }
+        }
+      }
+    },
+    "/api/users/{user_id}": {
+      "get": {
+        "summary": "Szczegóły użytkownika",
+        "tags": ["Users"],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Szczegóły użytkownika"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Usuń użytkownika",
+        "tags": ["Users"],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Użytkownik usunięty pomyślnie"
+          }
+        }
+      }
+    },
+    "/data/config": {
+      "get": {
+        "summary": "OPAL External Data Sources Config",
+        "description": "Zwraca konfigurację data sources dla OPAL Client na podstawie JWT token",
+        "tags": ["OPAL"],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "OPAL Client JWT token"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Konfiguracja data sources"
+          },
+          "401": {
+            "description": "Nieprawidłowy lub brakujący token"
+          }
+        }
+      }
+    },
+    "/data/tenants-bootstrap": {
+      "get": {
+        "summary": "Tenant Discovery API (Bootstrap)",
+        "description": "Zwraca konfigurację data sources dla wszystkich tenantów - do bootstrap'owania OPAL Server",
+        "tags": ["OPAL", "Tenants", "Bootstrap"],
+        "responses": {
+          "200": {
+            "description": "Konfiguracja data sources dla wszystkich tenantów"
+          }
+        }
+      }
+    },
+    "/opal/health": {
+      "get": {
+        "summary": "OPAL Integration Health Check",
+        "description": "Sprawdza gotowość integracji OPAL External Data Sources",
+        "tags": ["OPAL", "System"],
+        "responses": {
+          "200": {
+            "description": "OPAL integration jest gotowa"
+          },
+          "503": {
+            "description": "OPAL integration nie jest gotowa"
+          }
+        }
+      }
+    },
+    "/debug/user_access/{user_id}/{tenant_id}": {
+      "get": {
+        "summary": "Debug dostępów użytkownika",
+        "description": "Endpoint debugowy do sprawdzania dostępów użytkownika w kontekście tenanta",
+        "tags": ["Debug", "Users"],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Identyfikator użytkownika"
+          },
+          {
+            "name": "tenant_id", 
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"},
+            "description": "Identyfikator tenanta"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Informacje debugowe o dostępach użytkownika"
+          }
+        }
+      }
+    },
+    "/api/companies": {
+      "get": {
+        "summary": "Lista firm",
+        "description": "Zwraca listę firm z opcjonalnym filtrowaniem po tenant_id i statusie",
+        "tags": ["Companies"],
+        "parameters": [
+          {
+            "name": "tenant_id",
+            "in": "query",
+            "schema": {"type": "string"},
+            "description": "Filtruj po tenant_id"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {"type": "string", "default": "active"},
+            "description": "Filtruj po statusie firmy"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista firm"
+          }
+        }
+      },
+      "post": {
+        "summary": "Utworz firmę",
+        "description": "Tworzy nową firmę w systemie",
+        "tags": ["Companies"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tenant_id", "company_name"],
+                "properties": {
+                  "tenant_id": {"type": "string"},
+                  "company_name": {"type": "string"},
+                  "company_code": {"type": "string"},
+                  "nip": {"type": "string"},
+                  "description": {"type": "string"},
+                  "parent_company_id": {"type": "string"},
+                  "status": {"type": "string", "default": "active"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Firma utworzona pomyślnie"
+          }
+        }
+      }
+    },
+    "/api/companies/{company_id}": {
+      "get": {
+        "summary": "Szczegóły firmy",
+        "description": "Zwraca szczegóły firmy wraz z listą użytkowników",
+        "tags": ["Companies"],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Szczegóły firmy"
+          }
+        }
+      },
+      "put": {
+        "summary": "Zaktualizuj firmę",
+        "tags": ["Companies"],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Firma zaktualizowana pomyślnie"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Usuń firmę",
+        "tags": ["Companies"],
+        "parameters": [
+          {
+            "name": "company_id",
+            "in": "path",
+            "required": true,
+            "schema": {"type": "string"}
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Firma usunięta pomyślnie"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "System",
+      "description": "Endpointy systemowe"
+    },
+    {
+      "name": "Tenants",
+      "description": "Zarządzanie tenantami"
+    },
+    {
+      "name": "ACL",
+      "description": "Dane kontroli dostępu"
+    },
+    {
+      "name": "Users",
+      "description": "Zarządzanie użytkownikami"
+    },
+    {
+      "name": "Companies",
+      "description": "Zarządzanie firmami"
+    },
+    {
+      "name": "Profiles",
+      "description": "Zarządzanie profilami aplikacji"
+    },
+    {
+      "name": "User Access",
+      "description": "Dostępy użytkowników do aplikacji i firm"
+    },
+    {
+      "name": "OPAL",
+      "description": "Integracja z OPAL External Data Sources"
+    },
+    {
+      "name": "Bootstrap",
+      "description": "Endpointy do bootstrap'owania systemu"
+    },
+    {
+      "name": "Debug",
+      "description": "Endpointy debugowe"
+    },
+    {
+      "name": "Sync",
+      "description": "Synchronizacja danych z OPAL"
+    }
+  ]
+} 

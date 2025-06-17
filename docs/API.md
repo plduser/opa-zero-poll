@@ -1,10 +1,28 @@
-# Data Provider API - Enhanced Model 1 Documentation
+# Data Provider API - Complete Documentation
 
 ## Przegląd
 
-Data Provider API implementuje Enhanced Model 1 - rozszerzoną strukturę danych RBAC z separacją per aplikacja i minimalnym formatem danych firmowych.
+Data Provider API to kompleksowy serwis Multi-tenant ACL dla OPA z integracją PostgreSQL. Implementuje Enhanced Model 1 (RBAC) oraz zapewnia pełne zarządzanie użytkownikami, firmami, profilami aplikacji i integrację z OPAL External Data Sources.
 
 **Base URL:** `http://localhost:8110`
+
+## 📖 Interaktywna Dokumentacja
+
+### 🌐 Swagger UI (Rekomendowane)
+```
+http://localhost:8110/docs
+```
+- Interaktywna dokumentacja z możliwością testowania endpointów
+- Automatycznie generowana na podstawie specyfikacji OpenAPI
+- Pełne opisy parametrów, odpowiedzi i przykłady
+
+### 📝 OpenAPI Specification
+```
+http://localhost:8110/openapi.json
+```
+- Surowa specyfikacja OpenAPI 3.0.3 w formacie JSON
+- Do importu w Postman, Insomnia lub innych narzędziach
+- Zawiera kompletną definicję wszystkich endpointów
 
 ## Enhanced Model 1 Structure
 
@@ -66,7 +84,58 @@ Enhanced Model 1 wprowadza następujące ulepszenia w stosunku do podstawowego M
 }
 ```
 
-## API Endpoints
+## 📋 Kompletna Lista Endpointów
+
+Poniżej znajduje się przegląd wszystkich dostępnych endpointów. **Dla szczegółowej dokumentacji z przykładami i interaktywnym testowaniem, użyj Swagger UI: http://localhost:8110/docs**
+
+### 🔧 Endpointy Systemowe
+- `GET /` - Informacje o API
+- `GET /health` - Health check serwisu i bazy danych
+- `GET /openapi.json` - Specyfikacja OpenAPI
+- `GET /docs` - Swagger UI
+
+### 🏢 Zarządzanie Tenantami
+- `GET /tenants` - Lista wszystkich tenantów
+- `GET /tenants/{tenant_id}/acl` - Dane ACL dla tenanta (Enhanced Model 1)
+
+### 👥 Zarządzanie Użytkownikami  
+- `GET /api/users` - Lista użytkowników (z filtrowaniem)
+- `GET /api/users/{user_id}` - Szczegóły użytkownika
+- `POST /api/users` - Dodanie nowego użytkownika
+- `PUT /api/users/{user_id}` - Aktualizacja użytkownika
+- `DELETE /api/users/{user_id}` - Usunięcie użytkownika
+
+### 🏢 Zarządzanie Firmami
+- `GET /api/companies` - Lista firm (z filtrowaniem)
+- `GET /api/companies/{company_id}` - Szczegóły firmy
+- `POST /api/companies` - Dodanie nowej firmy
+- `PUT /api/companies/{company_id}` - Aktualizacja firmy
+- `DELETE /api/companies/{company_id}` - Usunięcie firmy
+
+### 📱 Zarządzanie Profilami Aplikacji
+- `GET /api/profiles` - Lista profili aplikacji
+- `GET /api/profiles/{profile_id}` - Szczegóły profilu
+- `POST /api/profiles` - Dodanie nowego profilu
+- `PUT /api/profiles/{profile_id}` - Aktualizacja profilu
+- `DELETE /api/profiles/{profile_id}` - Usunięcie profilu
+
+### 🔗 Zarządzanie Dostępami Użytkowników
+- `GET /api/users/{user_id}/profiles` - Profile dostępne dla użytkownika
+- `POST /api/users/{user_id}/profiles` - Przypisanie profilu do użytkownika
+- `DELETE /api/users/{user_id}/profiles/{profile_id}` - Usunięcie dostępu do profilu
+- `POST /api/users/{user_id}/sync-profiles` - Synchronizacja profili z OPAL
+
+### 🔄 OPAL External Data Sources
+- `GET /data/config` - Konfiguracja źródeł danych dla OPAL
+- `GET /data/tenants-bootstrap` - Bootstrap wszystkich tenantów dla OPAL
+- `GET /opal/health` - Health check integracji OPAL
+
+### 🐛 Debug i Diagnostyka
+- `GET /debug/user_access/{user_id}/{tenant_id}` - Debug dostępów użytkownika
+
+## API Endpoints - Szczegółowa Dokumentacja
+
+> **Uwaga:** Poniższe opisy to podstawowe informacje. Dla pełnej dokumentacji z przykładami, schematami i interaktywnym testowaniem, użyj Swagger UI pod adresem: http://localhost:8110/docs
 
 ### 1. Get Tenant ACL Data
 
@@ -127,19 +196,48 @@ Pobierz listę dostępnych tenantów.
 
 #### `GET /health`
 
-Sprawdź status serwisu Data Provider API.
+Sprawdź status serwisu Data Provider API i dostępność bazy danych.
 
 **Response:**
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-06-15T10:40:23.164248",
-  "version": "1.0.0",
-  "model": "Enhanced Model 1",
-  "services": {
-    "opa": "healthy",
-    "provisioning_api": "healthy"
-  }
+  "database_available": true,
+  "timestamp": "2025-06-17T12:12:24.487308"
+}
+```
+
+### 4. OPAL Health Check
+
+#### `GET /opal/health`
+
+Sprawdź status integracji OPAL External Data Sources.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "opal_integration": true,
+  "timestamp": "2025-06-17T12:12:24.487308"
+}
+```
+
+### 5. API Information
+
+#### `GET /`
+
+Podstawowe informacje o serwisie i dostępnych endpointach dokumentacji.
+
+**Response:**
+```json
+{
+  "service": "Data Provider API",
+  "version": "3.1.0", 
+  "description": "Multi-tenant ACL data provider for OPA with database integration",
+  "database_integration": true,
+  "openapi_docs": "/openapi.json",
+  "swagger_ui": "/docs",
+  "timestamp": "2025-06-17T12:12:24.487308"
 }
 ```
 
@@ -168,6 +266,38 @@ Enhanced Model 1 stanowi solidną podstawę dla przyszłej migracji do Model 2, 
 - **Memberships**: Przynależność użytkowników do zespołów
 - **Inheritance**: Dziedziczenie uprawnień z zespołów
 - **Advanced REBAC**: Relacyjne kontrole dostępu
+
+## 🚀 Nowe Funkcjonalności (v3.1.0)
+
+### 📖 Dokumentacja OpenAPI
+- **Swagger UI** dostępny pod `/docs` z interaktywnym testowaniem
+- **OpenAPI 3.0.3 Specification** pod `/openapi.json`
+- **Automatyczna dokumentacja** wszystkich endpointów z opisami i przykładami
+
+### 👥 Zarządzanie Użytkownikami
+- **CRUD Operations** - pełne zarządzanie użytkownikami
+- **Filtrowanie** po tenant_id, statusie, rolach
+- **Synchronizacja** z OPAL przez User Data Sync Service
+
+### 🏢 Zarządzanie Firmami
+- **CRUD Operations** - zarządzanie firmami w systemie
+- **Multi-tenant support** - firmy przypisane do tenantów
+- **NIP integration** - obsługa numerów identyfikacyjnych
+
+### 📱 Profile Aplikacji
+- **Application Profiles** - definicje dostępów do aplikacji
+- **Role mapping** - mapowanie ról na uprawnienia
+- **User assignments** - przypisywanie profili użytkownikom
+
+### 🔄 OPAL Integration
+- **External Data Sources** - konfiguracja dla OPAL Client
+- **Multi-tenant bootstrap** - automatyczne ładowanie danych wszystkich tenantów
+- **Real-time sync** - synchronizacja zmian z OPAL Server
+
+### 🐛 Debug & Monitoring
+- **Health checks** - monitorowanie stanu serwisu i bazy danych
+- **Debug endpoints** - diagnostyka dostępów użytkowników
+- **Detailed logging** - rozszerzone logowanie operacji
 
 ---
 

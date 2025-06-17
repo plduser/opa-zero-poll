@@ -149,13 +149,13 @@ services:
       # Data Configuration
       - OPAL_DATA_CONFIG_SOURCES_FILE_PATH=/data-config.json
       - OPAL_DATA_CONFIG_ENABLED=true
-      - OPAL_ALL_DATA_URL=http://simple-api-provider:8090/full-snapshot
+      # DYNAMICZNE DANE - używamy Data Provider API jako źródło wszystkich tenantów
+      - OPAL_ALL_DATA_URL=http://data-provider-api:8110/opal/full-snapshot
       
       # Server Performance
       - OPAL_LOG_LEVEL=DEBUG
     depends_on:
       - redis-broadcast
-      - simple-api-provider
       - provisioning-api
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:7002/healthcheck"]
@@ -208,22 +208,7 @@ services:
     networks:
       - new-arch-network
 
-  # Simple API Provider - prosty nginx z na sztywno zdefiniowanymi odpowiedziami
-  simple-api-provider:
-    build: ./simple-api-provider
-    platform: linux/arm64
-    container_name: simple-api-provider
-    ports:
-      - "8090:8090"
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8090/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-    restart: unless-stopped
-    networks:
-      - new-arch-network
+
 
 volumes:
   postgres_data:

@@ -1,43 +1,45 @@
 {
-  "entries": [
-    {
-      "url": "http://data-provider-api:8110/tenants/tenant1/acl",
-      "dst_path": "/acl/tenant1",
-      "topics": [
-        "multi_tenant_data"
-      ],
-      "config": {
-        "headers": {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
+  "config": {
+    "entries": [
+      {
+        "url": "http://data-provider-api:8110/tenants/tenant1/acl",
+        "dst_path": "/acl/tenant1",
+        "topics": [
+          "multi_tenant_data"
+        ],
+        "config": {
+          "headers": {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          }
+        }
+      },
+      {
+        "url": "http://data-provider-api:8110/tenants/tenant2/acl",
+        "dst_path": "/acl/tenant2",
+        "topics": [
+          "multi_tenant_data"
+        ],
+        "config": {
+          "headers": {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          }
+        }
+      },
+      {
+        "url": "http://data-provider-api:8110/tenants/tenant3/acl",
+        "dst_path": "/acl/tenant3",
+        "topics": [
+          "multi_tenant_data"
+        ],
+        "config": {
+          "headers": {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          }
         }
       }
-    },
-    {
-      "url": "http://data-provider-api:8110/tenants/tenant2/acl",
-      "dst_path": "/acl/tenant2",
-      "topics": [
-        "multi_tenant_data"
-      ],
-      "config": {
-        "headers": {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        }
-      }
-    },
-    {
-      "url": "http://data-provider-api:8110/tenants/tenant3/acl",
-      "dst_path": "/acl/tenant3",
-      "topics": [
-        "multi_tenant_data"
-      ],
-      "config": {
-        "headers": {
-          "Content-Type": "application/json",
-          "Accept": "application/json"
-        }
-      }
-    }
-  ]
+    ]
+  }
 }
