@@ -10,36 +10,30 @@ default allow := false
 
 allow if {
     # Sprawdzamy czy użytkownik istnieje w rzeczywistych danych
-    user_data := data.acl[input.tenant].data.users[input.user]
+    user_data := data.acl[input.tenant].users[input.user]
     
-    # Ksiegowa - ma dostęp do wszystkich faktury (zakupowe i sprzedażowe)
-    ksef_roles := user_data.roles.ksef
-    "Ksiegowa" in ksef_roles
-    input.action in ["view_invoices_purchase", "view_invoices_sales", "manage_contractors", "export_to_symfonia"]
+    # Sprawdzamy bezpośrednio uprawnienia w permissions.ksef
+    ksef_permissions := user_data.permissions.ksef
+    
+    # Mapowanie akcji na wymagane uprawnienia
+    required_permission := action_to_permission[input.action]
+    required_permission in ksef_permissions
 }
 
-allow if {
-    # Handlowiec - tylko faktury sprzedażowe  
-    user_data := data.acl[input.tenant].data.users[input.user]
-    ksef_roles := user_data.roles.ksef
-    "Handlowiec" in ksef_roles
-    input.action in ["view_invoices_sales"]
-}
-
-allow if {
-    # Zakupowiec - tylko faktury zakupowe
-    user_data := data.acl[input.tenant].data.users[input.user]
-    ksef_roles := user_data.roles.ksef
-    "Zakupowiec" in ksef_roles
-    input.action in ["view_invoices_purchase"]
-}
-
-allow if {
-    # Administrator - pełny dostęp do wszystkiego
-    user_data := data.acl[input.tenant].data.users[input.user]
-    ksef_roles := user_data.roles.ksef
-    "Administrator" in ksef_roles
-    # Administrator może wszystko - brak ograniczeń na akcje
+# Mapowanie akcji na wymagane uprawnienia KSEF
+action_to_permission := {
+    "view_invoices_sales": "canViewSalesInvoices",
+    "view_invoices_purchase": "canViewPurchaseInvoices", 
+    "create_sales_invoices": "canCreateSalesInvoices",
+    "create_purchase_invoices": "canCreatePurchaseInvoices",
+    "edit_sales_invoices": "canEditSalesInvoices",
+    "edit_purchase_invoices": "canEditPurchaseInvoices",
+    "delete_sales_invoices": "canDeleteSalesInvoices",
+    "delete_purchase_invoices": "canDeletePurchaseInvoices",
+    "manage_configuration": "canManageConfiguration",
+    "manage_declarations": "canManageDeclarations",
+    "manage_users": "canManageUsers",
+    "view_reports": "canViewReports"
 }
 
 # Funkcja diagnostyczna - zwraca informacje o decyzji
@@ -52,10 +46,10 @@ decision := {
     "reason": reason
 }
 
-# Bezpieczne pobieranie ról użytkownika
-user_roles_safe := roles if {
-    user_data := data.acl[input.tenant].data.users[input.user]
-    roles := user_data.roles.ksef
+# Bezpieczne pobieranie uprawnień użytkownika
+user_roles_safe := permissions if {
+    user_data := data.acl[input.tenant].users[input.user]
+    permissions := user_data.permissions.ksef
 } else = [] if true
 
 reason := "Access granted - user has required role" if allow
