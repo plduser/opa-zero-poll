@@ -7,17 +7,7 @@ healthcheckTimeout = 100
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
-# PostgreSQL Database Service
-[[services]]
-name = "postgres-db"
-source = "postgresql"
-
-[services.variables]
-POSTGRES_USER = "opa_user"
-POSTGRES_PASSWORD = "${{ railway.database.password }}"
-POSTGRES_DB = "opa_zero_poll"
-
-# Redis Service for OPAL communication
+# Redis Service for OPAL communication (NEW)
 [[services]]
 name = "redis-broadcast"
 source = "redis"
@@ -25,31 +15,7 @@ source = "redis"
 [services.variables]
 REDIS_PORT = "6379"
 
-# Data Provider API Service
-[[services]]
-name = "data-provider-api"
-source = "new-architecture/components/data-provider-api"
-
-[services.variables]
-PORT = "8110"
-DEBUG = "false"
-WEBHOOK_SECRET = "railway_super_secret_key_2025"
-DISABLE_JWT_VALIDATION = "true"
-# Database connection
-DB_HOST = "${{ services.postgres-db.host }}"
-DB_PORT = "5432"
-DB_USER = "opa_user"
-DB_PASSWORD = "${{ services.postgres-db.POSTGRES_PASSWORD }}"
-DB_NAME = "opa_zero_poll"
-# OPA and Provisioning API URLs
-OPA_URL = "http://${{ services.opa-standalone.host }}:8181"
-PROVISIONING_API_URL = "http://${{ services.provisioning-api.host }}:8010"
-
-[services.healthcheck]
-path = "/health"
-timeout = 30
-
-# Provisioning API Service
+# Provisioning API Service (NEW)
 [[services]]
 name = "provisioning-api"
 source = "new-architecture/components/provisioning-api"
@@ -57,15 +23,15 @@ source = "new-architecture/components/provisioning-api"
 [services.variables]
 PORT = "8010"
 DEBUG = "false"
-# Database connection
-DB_HOST = "${{ services.postgres-db.host }}"
+# Database connection - używamy istniejący PostgreSQL
+DB_HOST = "${{ services.postgresql.host }}"
 DB_PORT = "5432"
 DB_USER = "opa_user"
-DB_PASSWORD = "${{ services.postgres-db.POSTGRES_PASSWORD }}"
+DB_PASSWORD = "${{ services.postgresql.POSTGRES_PASSWORD }}"
 DB_NAME = "opa_zero_poll"
 # OPAL integration
 OPAL_SERVER_URL = "http://${{ services.opal-server.host }}:7002"
-DATA_PROVIDER_API_URL = "http://${{ services.data-provider-api.host }}:8110"
+DATA_PROVIDER_API_URL = "http://${{ services.opa-zero-poll.host }}:8110"
 
 [services.healthcheck]
 path = "/health"
@@ -101,7 +67,7 @@ OPAL_POLICY_REPO_PATH = "new-architecture/components/opa-standalone/policies"
 OPAL_POLICY_REPO_POLLING_INTERVAL = "30"
 # Data Configuration
 OPAL_DATA_CONFIG_ENABLED = "true"
-OPAL_ALL_DATA_URL = "http://${{ services.data-provider-api.host }}:8110/opal/full-snapshot"
+OPAL_ALL_DATA_URL = "http://${{ services.opa-zero-poll.host }}:8110/opal/full-snapshot"
 OPAL_LOG_LEVEL = "DEBUG"
 
 [services.healthcheck]
@@ -130,19 +96,8 @@ OPAL_POLICY_SUBSCRIPTION_DIRS = "new-architecture/components/opa-standalone/poli
 # Data configuration
 OPAL_DATA_UPDATER_ENABLED = "true"
 OPAL_DATA_TOPICS = "multi_tenant_data"
-OPAL_DATA_CONFIG_SOURCES = "http://${{ services.data-provider-api.host }}:8110/data/config"
+OPAL_DATA_CONFIG_SOURCES = "http://${{ services.opa-zero-poll.host }}:8110/data/config"
 OPAL_POLICY_UPDATER_ENABLED = "true"
 OPAL_LOG_LEVEL = "DEBUG"
 
-# Next.js Frontend Service
-[[services]]
-name = "frontend"
-source = "."
 
-[services.variables]
-# Fixed: Add https:// protocol and use correct internal URL
-DATA_PROVIDER_API_URL = "https://opa-zero-poll-production-1934.up.railway.app"
-
-[services.healthcheck]
-path = "/"
-timeout = 120 
