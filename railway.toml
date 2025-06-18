@@ -44,5 +44,9 @@ name = "frontend"
 source = "."
 
 [services.variables]
-# TODO: Zamień na faktyczny URL z Railway dashboard
-DATA_PROVIDER_API_URL = "opa-zero-poll-production-1934.up.railway.app" 
+# Fixed: Add https:// protocol and use correct internal URL
+DATA_PROVIDER_API_URL = "https://opa-zero-poll-production-1934.up.railway.app"
+
+[services.healthcheck]
+path = "/"
+timeout = 120 
