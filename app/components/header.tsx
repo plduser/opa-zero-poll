@@ -12,9 +12,9 @@ interface HeaderProps {
 
 // Fallback użytkownicy dla sytuacji gdy API nie działa
 const fallbackUsers = [
-  { id: "user123", name: "Jan Kowalski", email: "jan.kowalski@firmowa.pl", initials: "JK", role: "ksiegowa" },
-  { id: "user456", name: "Anna Nowak", email: "anna.nowak@firmowa.pl", initials: "AN", role: "handlowiec" },
-  { id: "user789", name: "Piotr Zieliński", email: "piotr.zielinski@firmowa.pl", initials: "PZ", role: "administrator" },
+  { id: "user123", name: "Jan Kowalski", username: "admin_user", email: "jan.kowalski@firmowa.pl", initials: "JK", role: "ksiegowa" },
+  { id: "user456", name: "Anna Nowak", username: "hr_manager", email: "anna.nowak@firmowa.pl", initials: "AN", role: "handlowiec" },
+  { id: "user789", name: "Piotr Zieliński", username: "sales_rep", email: "piotr.zielinski@firmowa.pl", initials: "PZ", role: "administrator" },
 ]
 
 export function Header({ title }: HeaderProps) {
@@ -133,11 +133,11 @@ export function Header({ title }: HeaderProps) {
 
       {/* Dialog wyboru użytkownika */}
       <Dialog open={isUserDialogOpen} onOpenChange={setIsUserDialogOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-hidden">
           <DialogHeader>
-            <DialogTitle>Wybierz użytkownika</DialogTitle>
+            <DialogTitle>Wybierz użytkownika ({users.length})</DialogTitle>
           </DialogHeader>
-          <div className="space-y-2 mt-4">
+          <div className="max-h-80 overflow-y-auto space-y-2 mt-4 pr-2">
             {users.map((user) => (
               <div
                 key={user.id}
@@ -149,18 +149,23 @@ export function Header({ title }: HeaderProps) {
                 <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center text-sm font-bold text-green-800">
                   {user.initials}
                 </div>
-                <div className="flex-1">
-                  <div className="font-medium font-quicksand">{user.name}</div>
-                  <div className="text-sm text-gray-500">{user.email}</div>
-                  <div className="text-xs text-gray-400">{user.role}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium font-quicksand text-gray-900">
+                    {user.name}
+                    {user.username && (
+                      <span className="ml-2 text-sm font-normal text-gray-600">({user.username})</span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-500 truncate">{user.email}</div>
+                  <div className="text-xs text-gray-400 capitalize">{user.role}</div>
                 </div>
                 {currentUser.id === user.id && (
-                  <div className="text-green-600 text-sm font-medium">Aktualny</div>
+                  <div className="text-green-600 text-sm font-medium flex-shrink-0">✓ Aktualny</div>
                 )}
               </div>
             ))}
           </div>
-          <div className="flex justify-end gap-2 mt-6">
+          <div className="flex justify-end gap-2 mt-6 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsUserDialogOpen(false)}>
               Anuluj
             </Button>

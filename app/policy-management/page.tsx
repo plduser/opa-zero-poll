@@ -42,14 +42,14 @@ export default function PolicyManagementPage() {
     {
       id: "2",
       name: "KSEF Access Policy",
-      description: "Kontrola dostępu do KSEF",
+      description: "Kontrola dostępu do KSEF - autoryzacja dla faktur i deklaracji",
       content: `package ksef\n\ndefault allow = false\n\nallow {\n  input.method == "GET"\n  input.path[0] == "invoices"\n}`,
-      status: "draft",
-      version: "0.1.0",
-      tests: 8,
-      testsStatus: "pending",
+      status: "active",
+      version: "1.0.0",
+      tests: 12,
+      testsStatus: "passed",
       createdAt: "2024-01-22T09:15:00Z",
-      updatedAt: "2024-01-22T09:15:00Z"
+      updatedAt: "2025-06-18T13:16:00Z"
     }
   ]
 

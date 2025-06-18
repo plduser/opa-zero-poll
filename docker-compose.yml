@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./new-architecture/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./new-architecture/database/seed_data.sql:/docker-entrypoint-initdb.d/02-seed_data.sql
+      - ./new-architecture/database/enhanced_seed_complete.sql:/docker-entrypoint-initdb.d/02-enhanced_seed_data.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U opa_user -d opa_zero_poll"]
       interval: 10s
@@ -149,8 +149,8 @@ services:
       # Data Configuration
       - OPAL_DATA_CONFIG_SOURCES_FILE_PATH=/data-config.json
       - OPAL_DATA_CONFIG_ENABLED=true
-      # DYNAMICZNE DANE - używamy Data Provider API jako źródło wszystkich tenantów
-      - OPAL_ALL_DATA_URL=http://data-provider-api:8110/opal/full-snapshot
+      # DYNAMICZNE DANE - używamy data-config.json zamiast OPAL_ALL_DATA_URL
+      # - OPAL_ALL_DATA_URL=http://data-provider-api:8110/opal/full-snapshot
       
       # Server Performance
       - OPAL_LOG_LEVEL=DEBUG

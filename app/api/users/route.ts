@@ -24,6 +24,7 @@ export async function GET() {
     // Przetwórz dane na format używany przez frontend
     const users = data.users?.map((user: any) => ({
       id: user.id || user.user_id,
+      username: user.username || user.user_id, // Dodano username z API
       name: user.full_name || user.name || 'Nieznany użytkownik',
       email: user.email || '',
       initials: user.initials || (user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : 'NU'),
@@ -32,6 +33,7 @@ export async function GET() {
       status: user.status || 'active'
     })).filter((user: any) => user.status === 'active') || []
 
+    
     console.log('[API Users] Przetworzeni użytkownicy:', users)
 
     return NextResponse.json({
@@ -45,9 +47,9 @@ export async function GET() {
     
     // Fallback do mockowanych danych w przypadku błędu
     const fallbackUsers = [
-      { id: "user123", name: "Jan Kowalski", email: "jan.kowalski@firmowa.pl", initials: "JK", role: "ksiegowa", status: "active" },
-      { id: "user456", name: "Anna Nowak", email: "anna.nowak@firmowa.pl", initials: "AN", role: "handlowiec", status: "active" },
-      { id: "user789", name: "Piotr Zieliński", email: "piotr.zielinski@firmowa.pl", initials: "PZ", role: "administrator", status: "active" },
+      { id: "user123", username: "admin_user", name: "Jan Kowalski", email: "jan.kowalski@firmowa.pl", initials: "JK", role: "ksiegowa", status: "active" },
+      { id: "user456", username: "hr_manager", name: "Anna Nowak", email: "anna.nowak@firmowa.pl", initials: "AN", role: "handlowiec", status: "active" },
+      { id: "user789", username: "sales_rep", name: "Piotr Zieliński", email: "piotr.zielinski@firmowa.pl", initials: "PZ", role: "administrator", status: "active" },
     ]
 
     return NextResponse.json({

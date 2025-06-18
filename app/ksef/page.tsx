@@ -57,8 +57,9 @@ export default function KSEFPage() {
     }
     const checkPermissions = async () => {
       try {
-                 // Pobierz aktualnego użytkownika z localStorage
-         let userId = "user123" // Domyślnie Jan Kowalski (księgowa)
+        // Pobierz aktualnego użytkownika z localStorage
+        let userId = "user123" // Domyślnie Jan Kowalski (księgowa)
+        let tenantId = "tenant1" // Domyślny tenant
         
         if (typeof window !== 'undefined') {
           const storedUser = localStorage.getItem('currentUser')
@@ -66,17 +67,31 @@ export default function KSEFPage() {
             try {
               const user = JSON.parse(storedUser)
               userId = user.id
+              
+              // Pobierz dane użytkownika z API aby znaleźć jego tenant
+              const userResponse = await fetch('/api/users')
+              const userData = await userResponse.json()
+              
+              if (userData.success && userData.users) {
+                const fullUserData = userData.users.find((u: any) => u.id === userId)
+                if (fullUserData && fullUserData.tenants && fullUserData.tenants.length > 0) {
+                  // Użyj domyślnego tenanta użytkownika
+                  const defaultTenant = fullUserData.tenants.find((t: any) => t.is_default) || fullUserData.tenants[0]
+                  tenantId = defaultTenant.tenant_id
+                  console.log(`[KSEF] Znaleziony tenant dla użytkownika ${userId}: ${tenantId}`)
+                }
+              }
             } catch (e) {
               console.error('Błąd parsowania użytkownika z localStorage:', e)
             }
           }
         }
         
-        console.log('Sprawdzanie uprawnień dla użytkownika:', userId)
+        console.log(`[KSEF] Sprawdzanie uprawnień dla użytkownika: ${userId}, tenant: ${tenantId}`)
         
         const [purchaseAccess, salesAccess] = await Promise.all([
-          canViewPurchaseInvoices(userId),
-          canViewSalesInvoices(userId)
+          canViewPurchaseInvoices(userId, tenantId),
+          canViewSalesInvoices(userId, tenantId)
         ])
         
         console.log(`[KSEF] Sprawdzanie uprawnień dla użytkownika: ${userId}`)

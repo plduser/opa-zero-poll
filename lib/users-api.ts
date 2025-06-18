@@ -326,6 +326,7 @@ export function transformApiUserToPortalUser(apiUser: User, index: number): any 
   return {
     id: index + 1, // Portal expects numeric ID
     user_id: apiUser.user_id, // Keep original API ID for operations
+    username: apiUser.username, // Nazwa użytkownika z API
     name: apiUser.full_name,
     email: apiUser.email,
     phone: "-", // Not available in API response

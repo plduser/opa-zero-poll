@@ -810,10 +810,12 @@ export default function UsersPage() {
                   </th>
                   <th className="p-4 text-left font-bold text-sm">
                     <div className="flex items-center gap-2">
-                      Adres e-mail
+                      Nazwa użytkownika
                       <ChevronDown className="h-5 w-5 text-green-600" />
                     </div>
                   </th>
+                  <th className="p-4 text-left font-bold text-sm">Imię i nazwisko</th>
+                  <th className="p-4 text-left font-bold text-sm">Adres e-mail</th>
                   <th className="p-4 text-left font-bold text-sm">Firmy</th>
                   <th className="p-4 text-left font-bold text-sm">Uprawnienia</th>
                   <th className="p-4 text-right font-bold text-sm">Akcje</th>
@@ -825,7 +827,20 @@ export default function UsersPage() {
                     <td className="p-4">
                       <Checkbox />
                     </td>
-                    <td className="p-4">{user.email}</td>
+                    <td className="p-4">
+                      <span className="font-medium text-gray-900">{user.username || '-'}</span>
+                    </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-sm font-bold text-green-800">
+                          {user.name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()}
+                        </div>
+                        <span className="font-medium text-gray-900">{user.name}</span>
+                      </div>
+                    </td>
+                    <td className="p-4">
+                      <span className="text-gray-600">{user.email}</span>
+                    </td>
                     <td className="p-4">{user.companies}</td>
                     <td className="p-4">
                       <div className="flex flex-wrap gap-1">
@@ -1327,6 +1342,7 @@ export default function UsersPage() {
 type UserType = {
   id: number
   user_id?: string // API ID for backend operations
+  username?: string // Nazwa użytkownika z API
   name: string
   email: string
   phone: string
