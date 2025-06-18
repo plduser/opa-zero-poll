@@ -43,14 +43,22 @@ decision := {
     "tenant": input.tenant,
     "action": input.action,
     "user_roles": user_roles_safe,
+    "user_permissions": user_permissions_safe,
+    "required_permission": action_to_permission[input.action],
     "reason": reason
 }
 
+# Bezpieczne pobieranie ról użytkownika
+user_roles_safe := roles if {
+    user_data := data.acl[input.tenant].users[input.user]
+    roles := user_data.roles.ksef
+} else = [] if true
+
 # Bezpieczne pobieranie uprawnień użytkownika
-user_roles_safe := permissions if {
+user_permissions_safe := permissions if {
     user_data := data.acl[input.tenant].users[input.user]
     permissions := user_data.permissions.ksef
 } else = [] if true
 
-reason := "Access granted - user has required role" if allow
-reason := sprintf("Access denied - user roles %v do not allow action '%s'", [user_roles_safe, input.action]) if not allow 
+reason := "Access granted - user has required permission" if allow
+reason := sprintf("Access denied - user permissions %v do not include required permission '%s'", [user_permissions_safe, action_to_permission[input.action]]) if not allow 
