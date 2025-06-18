@@ -9,8 +9,8 @@ default allow := false
 # Główne reguły autoryzacji dla KSEF - używamy rzeczywistych danych z /acl/{tenant}
 
 allow if {
-    # Sprawdzamy czy użytkownik istnieje w rzeczywistych danych
-    user_data := data.acl[input.tenant].users[input.user]
+    # Sprawdzamy czy użytkownik istnieje w rzeczywistych danych - z poprawną strukturą
+    user_data := data.acl[input.tenant].data.users[input.user]
     
     # Sprawdzamy bezpośrednio uprawnienia w permissions.ksef
     ksef_permissions := user_data.permissions.ksef
@@ -50,13 +50,13 @@ decision := {
 
 # Bezpieczne pobieranie ról użytkownika
 user_roles_safe := roles if {
-    user_data := data.acl[input.tenant].users[input.user]
+    user_data := data.acl[input.tenant].data.users[input.user]
     roles := user_data.roles.ksef
 } else = [] if true
 
 # Bezpieczne pobieranie uprawnień użytkownika
 user_permissions_safe := permissions if {
-    user_data := data.acl[input.tenant].users[input.user]
+    user_data := data.acl[input.tenant].data.users[input.user]
     permissions := user_data.permissions.ksef
 } else = [] if true
 
