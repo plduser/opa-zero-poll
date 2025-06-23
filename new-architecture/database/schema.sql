@@ -124,6 +124,19 @@ CREATE TABLE role_permissions (
 -- USER ASSIGNMENTS
 -- ============================================================================
 
+-- User_Tenants - przypisania użytkowników do tenantów
+CREATE TABLE user_tenants (
+    user_id VARCHAR(255) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    tenant_id VARCHAR(255) NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+    is_default BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    assigned_by VARCHAR(255),
+    notes TEXT,
+    
+    PRIMARY KEY (user_id, tenant_id)
+);
+
 -- User_Roles - przypisania ról użytkownikom w aplikacjach
 CREATE TABLE user_roles (
     user_id VARCHAR(255) NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
@@ -219,6 +232,8 @@ CREATE TABLE team_companies (
 
 -- Multi-tenancy indexes
 CREATE INDEX idx_companies_tenant_id ON companies(tenant_id);
+CREATE INDEX idx_user_tenants_user_id ON user_tenants(user_id);
+CREATE INDEX idx_user_tenants_tenant_id ON user_tenants(tenant_id);
 CREATE INDEX idx_user_roles_tenant_id ON user_roles(tenant_id);
 CREATE INDEX idx_user_access_tenant_id ON user_access(tenant_id);
 CREATE INDEX idx_teams_tenant_id ON teams(tenant_id);

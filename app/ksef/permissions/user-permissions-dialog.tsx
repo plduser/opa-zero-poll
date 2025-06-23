@@ -132,6 +132,7 @@ export function UserPermissionsDialog({
   useEffect(() => {
     if (userInfo && open && !initialSetupDone && !loading) {
       console.log("Inicjalizacja danych użytkownika:", userInfo)
+      console.log("🔍 Role permissions structure:", userInfo.rolePermissions)
 
       // Znajdź profil użytkownika używając UUID
       if (userInfo.profile_id) {
@@ -151,22 +152,26 @@ export function UserPermissionsDialog({
 
       // Ustaw uprawnienia na podstawie rzeczywistych role_mappings z bazy danych
       if (userInfo.rolePermissions && Array.isArray(userInfo.rolePermissions)) {
-        console.log("Role mappings z bazy:", userInfo.rolePermissions)
+        console.log("🎯 Role mappings z bazy:", userInfo.rolePermissions)
         
         // Mapuj uprawnienia z bazy na ID z interfejsu - używaj prawdziwych UUID
         const permissionIds: string[] = []
         userInfo.rolePermissions.forEach((roleMapping: any) => {
+          console.log("📋 Processing role mapping:", roleMapping)
           if (roleMapping.permissions && Array.isArray(roleMapping.permissions)) {
             roleMapping.permissions.forEach((perm: any) => {
+              console.log("🔑 Found permission:", perm)
               if (perm.permission_id) {
                 permissionIds.push(perm.permission_id)
               }
             })
           }
         })
+        console.log("✅ Final permission IDs:", permissionIds)
         setSelectedPermissions(permissionIds)
       } else {
         // Brak role_mappings - pusta lista uprawnień
+        console.log("❌ No role mappings found")
         setSelectedPermissions([])
       }
 
@@ -348,36 +353,90 @@ export function UserPermissionsDialog({
             <TabsContent value="permissions" className="space-y-4">
               <div className="p-4 bg-gray-50 rounded-lg">
                 <p className="text-sm text-gray-600 mb-4">
-                  Bezpośrednie uprawnienia pozwalają na precyzyjne określenie, do jakich funkcji systemu użytkownik
-                  będzie miał dostęp. Ta metoda daje największą kontrolę.
+                  Bezpośrednie uprawnienia wynikające z przypisanych ról użytkownika. Te uprawnienia są automatycznie nadawane na podstawie profilu i ról użytkownika i nie mogą być edytowane bezpośrednio.
                 </p>
                 <div className="border rounded-lg overflow-hidden bg-white">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-12">Wybierz</TableHead>
+                        <TableHead className="w-12">Status</TableHead>
                         <TableHead>Uprawnienie</TableHead>
                         <TableHead>Opis</TableHead>
+                        <TableHead>Źródło</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {permissions.map((permission) => (
-                        <TableRow
-                          key={permission.id}
-                          className={selectedPermissions.includes(permission.id) ? "bg-green-50" : ""}
-                        >
-                          <TableCell>
-                            <Checkbox
-                              checked={selectedPermissions.includes(permission.id)}
-                              onCheckedChange={() => handleTogglePermission(permission.id)}
-                            />
+                      {permissions.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+                            Brak uprawnień przypisanych do tego użytkownika
                           </TableCell>
-                          <TableCell className="font-medium">{permission.name}</TableCell>
-                          <TableCell>{permission.description}</TableCell>
                         </TableRow>
-                      ))}
+                      ) : (
+                        permissions.map((permission) => {
+                          // Sprawdź czy to uprawnienie jest aktywne dla użytkownika
+                          const isActive = selectedPermissions.includes(permission.id)
+                          
+                          // Znajdź źródło uprawnienia (z której roli pochodzi)
+                          let source = "Bezpośrednie"
+                          if (userInfo?.rolePermissions && Array.isArray(userInfo.rolePermissions)) {
+                            for (const roleMapping of userInfo.rolePermissions) {
+                              if (roleMapping.permissions && Array.isArray(roleMapping.permissions)) {
+                                const hasPermission = roleMapping.permissions.some((perm: any) => perm.permission_id === permission.id)
+                                if (hasPermission && roleMapping.role_name) {
+                                  source = `Z roli: ${roleMapping.role_name}`
+                                  break
+                                }
+                              }
+                            }
+                          }
+                          
+                          return (
+                            <TableRow
+                              key={permission.id}
+                              className={isActive ? "bg-green-50" : "bg-gray-50"}
+                            >
+                              <TableCell>
+                                <div className="flex items-center">
+                                  {isActive ? (
+                                    <div className="w-4 h-4 rounded border-2 border-green-600 bg-green-600 flex items-center justify-center">
+                                      <div className="w-2 h-2 bg-white rounded-sm"></div>
+                                    </div>
+                                  ) : (
+                                    <div className="w-4 h-4 rounded border-2 border-gray-300 bg-gray-100"></div>
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className={`font-medium ${isActive ? 'text-green-800' : 'text-gray-500'}`}>
+                                {permission.name}
+                              </TableCell>
+                              <TableCell className={isActive ? 'text-green-700' : 'text-gray-500'}>
+                                {permission.description}
+                              </TableCell>
+                              <TableCell>
+                                <Badge 
+                                  className={isActive 
+                                    ? "bg-green-100 text-green-800 border-green-200" 
+                                    : "bg-gray-100 text-gray-600 border-gray-200"
+                                  }
+                                >
+                                  {source}
+                                </Badge>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })
+                      )}
                     </TableBody>
                   </Table>
+                </div>
+                
+                {/* Informacja o edycji uprawnień */}
+                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <p className="text-sm text-blue-800">
+                    💡 <strong>Wskazówka:</strong> Aby zmienić uprawnienia użytkownika, przejdź do zakładki "Profil" lub "Role" 
+                    i zmień przypisanie użytkownika do odpowiedniego profilu lub ról.
+                  </p>
                 </div>
               </div>
             </TabsContent>

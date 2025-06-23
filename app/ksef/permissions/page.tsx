@@ -67,20 +67,23 @@ export default function KSEFPermissionsPage() {
           const accessData = await accessResponse.json()
           
           // Znajdź dostęp do aplikacji KSEF
-          const ksefAccess = accessData.application_access?.find((access: any) => access.app_name === 'KSEF')
+          const ksefApp = accessData.applications?.find((app: any) => app.app_id === 'ksef')
           
-          if (ksefAccess) {
-            ksefUsersData.push({
-              user_id: user.user_id,
-              username: user.username,
-              email: user.email,
-              full_name: user.full_name,
-              status: user.status,
-              profile_name: ksefAccess.profile_name,
-              profile_id: ksefAccess.profile_id,
-              role_mappings: ksefAccess.role_mappings || [],
-              assigned_at: ksefAccess.assigned_at,
-              assigned_by: ksefAccess.assigned_by
+          if (ksefApp && ksefApp.profiles && ksefApp.profiles.length > 0) {
+            // Dla każdego profilu KSEF użytkownika dodaj wpis
+            ksefApp.profiles.forEach((profile: any) => {
+              ksefUsersData.push({
+                user_id: user.user_id,
+                username: user.username,
+                email: user.email,
+                full_name: user.full_name,
+                status: user.status,
+                profile_name: profile.profile_name,
+                profile_id: profile.profile_id,
+                role_mappings: [], // role_mappings nie są w tej strukturze
+                assigned_at: profile.assigned_at,
+                assigned_by: profile.assigned_by
+              })
             })
           }
         } catch (error) {

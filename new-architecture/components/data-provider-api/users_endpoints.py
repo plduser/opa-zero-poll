@@ -321,127 +321,245 @@ def register_users_endpoints(app):
         finally:
             conn.close()
     
-    @app.route("/api/users/<user_id>/roles", methods=["POST"])
-    def assign_user_role(user_id):
-        """Przypisuje rolę użytkownikowi"""
-        data = request.get_json()
+    @app.route("/api/users/<user_id>/roles", methods=["GET", "POST"])
+    def handle_user_roles(user_id):
+        """Obsługuje zarówno pobieranie (GET) jak i przypisywanie (POST) ról użytkownika"""
         
-        if not data:
-            return jsonify({"error": "Request body is required"}), 400
-        
-        required_fields = ["tenant_id", "app_id", "profile_name"]
-        missing_fields = [field for field in required_fields if not data.get(field)]
-        
-        if missing_fields:
-            return jsonify({
-                "error": "Missing required fields",
-                "missing_fields": missing_fields
-            }), 400
-        
-        tenant_id = data["tenant_id"]
-        app_id = data["app_id"]
-        profile_name = data["profile_name"]
-        
-        logger.info(f"Assigning role {profile_name} in app {app_id} to user {user_id} in tenant {tenant_id}")
-        
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({"error": "Database connection failed"}), 503
-        
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Sprawdź czy użytkownik istnieje
-                cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
-                if not cur.fetchone():
-                    return jsonify({"error": "User not found"}), 404
-                
-                # Sprawdź czy profile istnieje
-                cur.execute("""
-                    SELECT profile_id FROM application_profiles 
-                    WHERE app_id = %s AND profile_name = %s
-                """, (app_id, profile_name))
-                
-                profile = cur.fetchone()
-                if not profile:
-                    return jsonify({"error": "Profile not found"}), 404
-                
-                profile_id = profile["profile_id"]
-                
-                # Sprawdź czy przypisanie już istnieje
-                cur.execute("""
-                    SELECT uap_id FROM user_application_profiles 
-                    WHERE user_id = %s AND profile_id = %s
-                """, (user_id, profile_id))
-                
-                if cur.fetchone():
-                    return jsonify({"error": "Role already assigned to user"}), 409
-                
-                # Przypisz rolę
-                cur.execute("""
-                    INSERT INTO user_application_profiles (user_id, profile_id, granted_at, granted_by)
-                    VALUES (%s, %s, NOW(), %s)
-                    RETURNING uap_id, granted_at
-                """, (user_id, profile_id, "system"))
-                
-                assignment = cur.fetchone()
-                conn.commit()
-                
-                logger.info(f"Role {profile_name} assigned successfully to user {user_id}")
-                
-                # Powiadom OPAL o zmianie ról - używając translatora
-                if USER_DATA_SYNC_AVAILABLE and sync_service and publish_translated_event:
-                    # Tradycyjne powiadomienie
-                    result = sync_service.publish_role_update(
-                        tenant_id=tenant_id,
-                        user_id=user_id,
-                        role_changes={
-                            "app_id": app_id,
-                            "profile_name": profile_name,
-                            "action": "assigned"
-                        },
-                        action="assign_role"
-                    )
+        if request.method == "GET":
+            # GET: Pobiera rzeczywiste role i uprawnienia użytkownika z bazy danych
+            logger.info(f"Getting roles and permissions for user {user_id}")
+            
+            conn = get_db_connection()
+            if not conn:
+                return jsonify({"error": "Database connection failed"}), 503
+            
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Sprawdź czy użytkownik istnieje
+                    cur.execute("SELECT user_id, username, full_name FROM users WHERE user_id = %s", (user_id,))
+                    user = cur.fetchone()
+                    if not user:
+                        return jsonify({"error": "User not found"}), 404
                     
-                    # Nowe przetłumaczone powiadomienie
-                    event_data = {
-                        "event_type": "role_assignment",
-                        "tenant_id": tenant_id,
+                    # Pobierz role użytkownika z rzeczywistymi uprawnieniami
+                    cur.execute("""
+                        SELECT
+                            r.role_id,
+                            r.role_name,
+                            r.description as role_description,
+                            a.app_id,
+                            a.app_name,
+                            uap.tenant_id,
+                            uap.assigned_at,
+                            uap.assigned_by,
+                            ap.profile_id,
+                            ap.profile_name
+                        FROM user_application_profiles uap
+                        JOIN application_profiles ap ON uap.profile_id = ap.profile_id
+                        JOIN applications a ON ap.app_id = a.app_id
+                        JOIN profile_roles pr ON ap.profile_id = pr.profile_id
+                        JOIN roles r ON pr.role_id = r.role_id
+                        WHERE uap.user_id = %s
+                        ORDER BY a.app_name, r.role_name
+                    """, (user_id,))
+                    
+                    role_mappings = cur.fetchall()
+                    
+                    # Dla każdej roli pobierz uprawnienia
+                    for mapping in role_mappings:
+                        cur.execute("""
+                            SELECT 
+                                p.permission_id,
+                                p.permission_name,
+                                p.description,
+                                p.resource_type,
+                                p.action
+                            FROM role_permissions rp
+                            JOIN permissions p ON rp.permission_id = p.permission_id
+                            WHERE rp.role_id = %s
+                        """, (mapping['role_id'],))
+                        
+                        permissions = cur.fetchall()
+                        # Dodaj permissions do mapping dict
+                        mapping['permissions'] = [dict(perm) for perm in permissions]
+                    
+                    # Grupuj role mappings według aplikacji
+                    apps_roles = {}
+                    for mapping in role_mappings:
+                        app_id = mapping['app_id']
+                        if app_id not in apps_roles:
+                            apps_roles[app_id] = {
+                                'app_id': app_id,
+                                'app_name': mapping['app_name'],
+                                'roles': []
+                            }
+                        
+                        apps_roles[app_id]['roles'].append({
+                            'role_id': mapping['role_id'],
+                            'role_name': mapping['role_name'],
+                            'role_description': mapping['role_description'],
+                            'profile_id': mapping['profile_id'],
+                            'profile_name': mapping['profile_name'],
+                            'tenant_id': mapping['tenant_id'],
+                            'assigned_at': mapping['assigned_at'].isoformat() if mapping['assigned_at'] else None,
+                            'assigned_by': mapping['assigned_by'],
+                            'permissions': mapping['permissions'] if mapping['permissions'] else []
+                        })
+                    
+                    # Flatten na listę dla kompatybilności z interfejsem
+                    role_mappings_list = []
+                    for app_data in apps_roles.values():
+                        for role in app_data['roles']:
+                            role_mappings_list.append({
+                                'app_id': app_data['app_id'],
+                                'app_name': app_data['app_name'],
+                                'role_id': role['role_id'],
+                                'role_name': role['role_name'],
+                                'role_description': role['role_description'],
+                                'profile_id': role['profile_id'],
+                                'profile_name': role['profile_name'],
+                                'tenant_id': role['tenant_id'],
+                                'assigned_at': role['assigned_at'],
+                                'assigned_by': role['assigned_by'],
+                                'permissions': role['permissions']
+                            })
+                    
+                    logger.info(f"Found {len(role_mappings_list)} role mappings for user {user_id}")
+                    
+                    return jsonify({
+                        "success": True,
                         "user_id": user_id,
-                        "role_changes": {
-                            "app_id": app_id,
-                            "profile_name": profile_name,
-                            "action": "assigned"
-                        }
-                    }
+                        "username": user["username"],
+                        "full_name": user["full_name"],
+                        "role_mappings": role_mappings_list,
+                        "total_roles": len(role_mappings_list),
+                        "timestamp": datetime.datetime.utcnow().isoformat()
+                    }), 200
                     
-                    translated_result = publish_translated_event(event_data)
-                    
-                    if result and translated_result:
-                        logger.info(f"✅ OPAL notifications (traditional + translated) sent for role assignment: {user_id} -> {profile_name}")
-                    elif result:
-                        logger.info(f"✅ OPAL traditional notification sent for role assignment: {user_id} -> {profile_name}")
-                        logger.warning(f"⚠️ Failed to send translated OPAL notification for role assignment: {user_id}")
-                    else:
-                        logger.warning(f"⚠️ Failed to send OPAL notifications for role assignment: {user_id}")
-                
+            except Exception as e:
+                logger.error(f"Error getting roles for user {user_id}: {e}")
+                return jsonify({"error": "Failed to get user roles"}), 500
+            finally:
+                conn.close()
+        
+        elif request.method == "POST":
+            # POST: Przypisuje rolę użytkownikowi
+            data = request.get_json()
+            
+            if not data:
+                return jsonify({"error": "Request body is required"}), 400
+            
+            required_fields = ["tenant_id", "app_id", "profile_name"]
+            missing_fields = [field for field in required_fields if not data.get(field)]
+            
+            if missing_fields:
                 return jsonify({
-                    "message": "Role assigned successfully",
-                    "assignment": {
-                        "user_id": user_id,
-                        "app_id": app_id,
-                        "profile_name": profile_name,
-                        "assigned_at": assignment["granted_at"].isoformat(),
-                        "assignment_id": assignment["uap_id"]
-                    },
-                    "timestamp": datetime.datetime.utcnow().isoformat()
-                }), 201
-                
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"Error assigning role to user {user_id}: {e}")
-            return jsonify({"error": "Failed to assign role"}), 500
-        finally:
-            conn.close()
+                    "error": "Missing required fields",
+                    "missing_fields": missing_fields
+                }), 400
+            
+            tenant_id = data["tenant_id"]
+            app_id = data["app_id"]
+            profile_name = data["profile_name"]
+            
+            logger.info(f"Assigning role {profile_name} in app {app_id} to user {user_id} in tenant {tenant_id}")
+            
+            conn = get_db_connection()
+            if not conn:
+                return jsonify({"error": "Database connection failed"}), 503
+            
+            try:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    # Sprawdź czy użytkownik istnieje
+                    cur.execute("SELECT user_id FROM users WHERE user_id = %s", (user_id,))
+                    if not cur.fetchone():
+                        return jsonify({"error": "User not found"}), 404
+                    
+                    # Sprawdź czy profile istnieje
+                    cur.execute("""
+                        SELECT profile_id FROM application_profiles 
+                        WHERE app_id = %s AND profile_name = %s
+                    """, (app_id, profile_name))
+                    
+                    profile = cur.fetchone()
+                    if not profile:
+                        return jsonify({"error": "Profile not found"}), 404
+                    
+                    profile_id = profile["profile_id"]
+                    
+                    # Sprawdź czy przypisanie już istnieje
+                    cur.execute("""
+                        SELECT uap_id FROM user_application_profiles 
+                        WHERE user_id = %s AND profile_id = %s
+                    """, (user_id, profile_id))
+                    
+                    if cur.fetchone():
+                        return jsonify({"error": "Role already assigned to user"}), 409
+                    
+                    # Przypisz rolę
+                    cur.execute("""
+                        INSERT INTO user_application_profiles (user_id, profile_id, tenant_id, assigned_at, assigned_by)
+                        VALUES (%s, %s, %s, NOW(), %s)
+                    """, (user_id, profile_id, tenant_id, "system"))
+                    
+                    conn.commit()
+                    
+                    logger.info(f"Role {profile_name} assigned successfully to user {user_id}")
+                    
+                    # Powiadom OPAL o zmianie ról - używając translatora
+                    if USER_DATA_SYNC_AVAILABLE and sync_service and publish_translated_event:
+                        # Tradycyjne powiadomienie
+                        result = sync_service.publish_role_update(
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                            role_changes={
+                                "app_id": app_id,
+                                "profile_name": profile_name,
+                                "action": "assigned"
+                            },
+                            action="assign_role"
+                        )
+                        
+                        # Nowe przetłumaczone powiadomienie
+                        event_data = {
+                            "event_type": "role_assignment",
+                            "tenant_id": tenant_id,
+                            "user_id": user_id,
+                            "role_changes": {
+                                "app_id": app_id,
+                                "profile_name": profile_name,
+                                "action": "assigned"
+                            }
+                        }
+                        
+                        translated_result = publish_translated_event(event_data)
+                        
+                        if result and translated_result:
+                            logger.info(f"✅ OPAL notifications (traditional + translated) sent for role assignment: {user_id} -> {profile_name}")
+                        elif result:
+                            logger.info(f"✅ OPAL traditional notification sent for role assignment: {user_id} -> {profile_name}")
+                            logger.warning(f"⚠️ Failed to send translated OPAL notification for role assignment: {user_id}")
+                        else:
+                            logger.warning(f"⚠️ Failed to send OPAL notifications for role assignment: {user_id}")
+                    
+                    return jsonify({
+                        "message": "Role assigned successfully",
+                        "assignment": {
+                            "user_id": user_id,
+                            "app_id": app_id,
+                            "profile_name": profile_name,
+                            "tenant_id": tenant_id,
+                            "assigned_at": datetime.datetime.utcnow().isoformat()
+                        },
+                        "timestamp": datetime.datetime.utcnow().isoformat()
+                    }), 201
+                    
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Error assigning role to user {user_id}: {e}")
+                return jsonify({"error": "Failed to assign role"}), 500
+            finally:
+                conn.close()
     
     @app.route("/api/users/<user_id>/roles/<profile_id>", methods=["DELETE"])
     def remove_user_role(user_id, profile_id):
