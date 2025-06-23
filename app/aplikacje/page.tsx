@@ -3,23 +3,24 @@
 import { useState } from "react"
 import {
   Search,
-  Home,
-  AppWindowIcon as Apps,
-  HelpCircle,
-  UserIcon,
-  Settings,
-  ChevronDown,
   Menu,
   MoreVertical,
+  AppWindowIcon as Apps,
+  ChevronDown,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { AppSidebar } from "@/components/app-sidebar"
+import { AppHeader } from "@/components/app-header"
+import { useAppMenu } from "@/hooks/use-app-menu"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AppSwitcher } from "@/app/components/app-switcher"
+import { PortalSettingsDropdown } from "@/app/components/portal-settings-dropdown"
 
 export default function ApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("all")
+  const { menuItems, activeItem, currentApp } = useAppMenu()
 
   // Lista aplikacji
   const applications = [
@@ -137,111 +138,14 @@ export default function ApplicationsPage() {
 
   return (
     <div className="min-h-screen bg-white">
-      {/* Nagłówek */}
-      <header className="flex justify-between items-center px-6 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-4">
-          <button className="p-1">
-            <Menu className="h-6 w-6" />
-          </button>
-          <div className="flex items-center">
-            <img src="/symfonia-logo.png" alt="Symfonia" className="h-10 relative top-[5px]" />
-            <span className="text-lg font-medium font-quicksand ml-4">Portal Użytkownika</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <select className="flex items-center gap-2 px-4 py-2 border rounded-md font-quicksand appearance-none cursor-pointer pr-10">
-              <option>ECM3 Jacek Paszek</option>
-              <option>CD Projekt Red S.A.</option>
-              <option>Platige Image S.A.</option>
-              <option>Techland Sp. z o.o.</option>
-              <option>11 bit studios S.A.</option>
-              <option>Bloober Team S.A.</option>
-            </select>
-            <ChevronDown className="h-5 w-5 text-green-600 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
-          </div>
-          <button className="p-1">
-            <Settings className="h-6 w-6" />
-          </button>
-          <AppSwitcher />
-          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-sm font-bold text-green-800">
-            JP
-          </div>
-        </div>
-      </header>
+      <AppHeader title={currentApp || "Portal Użytkownika"} />
 
       {/* Menu boczne i zawartość */}
       <div className="flex">
-        <aside className="w-64 min-h-[calc(100vh-64px)] border-r border-gray-200 bg-white">
-          <nav className="py-4">
-            <ul className="space-y-1">
-              <li>
-                <a href="#" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <Home className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Strona główna</span>
-                </a>
-              </li>
-              <li>
-                <a href="/aplikacje" className="flex items-center gap-3 px-6 py-3 bg-gray-50">
-                  <Apps className="h-5 w-5 text-green-600" />
-                  <span className="text-base font-medium font-quicksand text-green-600">Aplikacje i usługi</span>
-                </a>
-              </li>
-              <li>
-                <a href="#" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <HelpCircle className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Centrum wsparcia</span>
-                </a>
-              </li>
-              <li>
-                <a href="#" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <UserIcon className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Panel klienta</span>
-                </a>
-              </li>
-              <li>
-                <a href="/tenant-management" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <Settings className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Zarządzanie Tenantami</span>
-                </a>
-              </li>
-              <li>
-                <button
-                  onClick={() => {
-                    const settingsMenu = document.getElementById("settings-submenu")
-                    if (settingsMenu) {
-                      settingsMenu.classList.toggle("hidden")
-                    }
-                  }}
-                  className="flex items-center justify-between w-full px-6 py-3 hover:bg-gray-50 text-left"
-                >
-                  <div className="flex items-center gap-3">
-                    <Settings className="h-5 w-5 text-gray-500" />
-                    <span className="text-base font-medium font-quicksand text-gray-800">Ustawienia</span>
-                  </div>
-                  <ChevronDown className="h-5 w-5 text-gray-500" />
-                </button>
-                <ul id="settings-submenu" className="pl-6 border-l-2 border-gray-200 ml-6 hidden">
-                  <li>
-                    <a href="/users" className="flex items-center gap-3 px-6 py-2 hover:bg-gray-50">
-                      <span className="text-base font-medium text-gray-800 font-quicksand">Użytkownicy</span>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/firmy" className="flex items-center gap-3 px-6 py-2 hover:bg-gray-50">
-                      <span className="text-base font-medium font-quicksand text-gray-800">Firmy</span>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="flex items-center gap-3 px-6 py-2 hover:bg-gray-50">
-                      <span className="text-base font-medium text-gray-800 font-quicksand">Klucze API</span>
-                    </a>
-                  </li>
-                </ul>
-              </li>
-            </ul>
-          </nav>
-        </aside>
+        <AppSidebar 
+          menuItems={menuItems}
+          activeItem={activeItem}
+        />
 
         {/* Zawartość główna */}
         <main className="flex-1 p-8">

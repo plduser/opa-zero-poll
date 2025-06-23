@@ -19,6 +19,7 @@ import {
   Menu,
   Building2,
   X,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -29,11 +30,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { AppSwitcher } from "@/components/app-switcher"
+import { PortalSettingsDropdown } from "@/app/components/portal-settings-dropdown"
+import { AppSidebar } from "@/components/app-sidebar"
+import { AppHeader } from "@/components/app-header"
+import { useAppMenu } from "@/hooks/use-app-menu"
 // Importuj komponent EditUserDialog
 import { EditUserDialog } from "./edit-user-dialog"
 // Importuj dialogi dostępu
 import { ApplicationAccessDialog } from "./application-access-dialog"
 import { CompanyAccessDialog } from "./company-access-dialog"
+import { TeamAssignmentDialog } from "./team-assignment-dialog"
+import { fetchTeams, fetchUserTeams, addTeamMember, removeTeamMember, type Team, type TeamMember, type UserTeam } from "@/lib/teams-api"
 // Import API functions
 import { 
   fetchUsers, 
@@ -54,6 +61,7 @@ import {
 
 export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("")
+  const { menuItems, activeItem, currentApp } = useAppMenu()
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [successMessage, setSuccessMessage] = useState("")
   const [showErrorMessage, setShowErrorMessage] = useState(false)
@@ -62,6 +70,7 @@ export default function UsersPage() {
   const [isPermissionsDialogOpen, setIsPermissionsDialogOpen] = useState(false)
   const [isAddAppAccessDialogOpen, setIsAddAppAccessDialogOpen] = useState(false)
   const [isAddCompanyAccessDialogOpen, setIsAddCompanyAccessDialogOpen] = useState(false)
+  const [isAddTeamDialogOpen, setIsAddTeamDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null)
   const [userToDelete, setUserToDelete] = useState<UserType | null>(null)
@@ -76,6 +85,7 @@ export default function UsersPage() {
   // Stan dla dialogów dostępu - dodaj wybranego użytkownika
   const [userForAppAccess, setUserForAppAccess] = useState<UserType | null>(null)
   const [userForCompanyAccess, setUserForCompanyAccess] = useState<UserType | null>(null)
+  const [userForTeamAccess, setUserForTeamAccess] = useState<UserType | null>(null)
   
   // State for real application access data from API
   const [userApplicationAccess, setUserApplicationAccess] = useState<UserApplicationAccess[]>([])
@@ -84,6 +94,12 @@ export default function UsersPage() {
   // State for real company access data from API
   const [userCompanyAccess, setUserCompanyAccess] = useState<UserCompanyAccess[]>([])
   const [loadingCompanyAccess, setLoadingCompanyAccess] = useState(false)
+  
+  // State for teams access data from API
+  const [userTeams, setUserTeams] = useState<UserTeam[]>([])
+  const [loadingTeams, setLoadingTeams] = useState(false)
+  const [allTeams, setAllTeams] = useState<Team[]>([])
+  const [loadingAllTeams, setLoadingAllTeams] = useState(false)
   
   // State for API data
   const [users, setUsers] = useState<UserType[]>([])
@@ -174,6 +190,14 @@ export default function UsersPage() {
     setErrorMessage(message)
     setShowErrorMessage(true)
     setTimeout(() => setShowErrorMessage(false), 5000)
+  }
+
+  const handleTeamAssignmentSuccess = (message: string) => {
+    showSuccess(message)
+    // Odśwież zespoły użytkownika jeśli dialog był otwarty dla tego użytkownika
+    if (selectedUser && userForTeamAccess && selectedUser.id === userForTeamAccess.id) {
+      refreshUserTeams()
+    }
   }
 
   // Mock data as fallback (keep the original mock data here)
@@ -429,34 +453,41 @@ export default function UsersPage() {
     if (user.user_id) {
       setLoadingApplicationAccess(true)
       setLoadingCompanyAccess(true)
+      setLoadingTeams(true)
       
       try {
-        // Load both application and company access data concurrently
-        const [applicationAccess, companyAccess] = await Promise.all([
+        // Load application, company access and teams data concurrently
+        const [applicationAccess, companyAccess, userTeamsData] = await Promise.all([
           fetchUserApplicationAccess(user.user_id),
-          fetchUserCompanies(user.user_id)
+          fetchUserCompanies(user.user_id),
+          fetchUserTeams(user.user_id, 'tenant125') // Using default tenant for now
         ])
         
         console.log('Loaded access data for user:', user.email, {
           applications: applicationAccess,
-          companies: companyAccess
+          companies: companyAccess,
+          teams: userTeamsData
         })
         
         setUserApplicationAccess(applicationAccess)
         setUserCompanyAccess(companyAccess)
+        setUserTeams(userTeamsData)
       } catch (error) {
         console.error('Error loading access data:', error)
         showError('Nie udało się załadować danych dostępów')
         setUserApplicationAccess([])
         setUserCompanyAccess([])
+        setUserTeams([])
       } finally {
         setLoadingApplicationAccess(false)
         setLoadingCompanyAccess(false)
+        setLoadingTeams(false)
       }
     } else {
       console.warn('User has no user_id, cannot load access data')
       setUserApplicationAccess([])
       setUserCompanyAccess([])
+      setUserTeams([])
     }
   }
 
@@ -637,99 +668,72 @@ export default function UsersPage() {
     }
   }
 
+  // === FUNKCJE ZESPOŁÓW ===
+
+  const refreshUserTeams = async () => {
+    if (!selectedUser?.user_id) return
+    
+    setLoadingTeams(true)
+    try {
+      const userTeamsData = await fetchUserTeams(selectedUser.user_id, 'tenant125')
+      setUserTeams(userTeamsData)
+    } catch (error) {
+      console.error('Error refreshing user teams:', error)
+      showError('Nie udało się odświeżyć zespołów użytkownika')
+    } finally {
+      setLoadingTeams(false)
+    }
+  }
+
+  const handleRemoveFromTeam = async (team: UserTeam) => {
+    if (!selectedUser?.user_id) {
+      showError('Brak danych użytkownika')
+      return
+    }
+
+    try {
+      console.log('Removing user from team:', team)
+      
+      // Show confirmation
+      const confirmed = window.confirm(
+        `Czy na pewno chcesz usunąć użytkownika "${selectedUser.name}" z zespołu "${team.team_name}"?`
+      )
+      
+      if (!confirmed) {
+        return
+      }
+
+      const success = await removeTeamMember(team.team_id, selectedUser.user_id)
+      
+      if (success) {
+        showSuccess(`Usunięto użytkownika z zespołu: ${team.team_name}`)
+        // Refresh teams data
+        await refreshUserTeams()
+      } else {
+        showError('Nie udało się usunąć użytkownika z zespołu')
+      }
+    } catch (error) {
+      console.error('Error removing user from team:', error)
+      showError('Błąd podczas usuwania użytkownika z zespołu')
+    }
+  }
+
+  const handleAddToTeam = (user: UserType) => {
+    console.log('Opening team assignment dialog for user:', user)
+    setUserForTeamAccess(user)
+    setIsAddTeamDialogOpen(true)
+  }
+
   return (
     <div className="min-h-screen bg-white">
-      {/* Nagłówek */}
-      <header className="flex justify-between items-center px-6 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-4">
-          <button className="p-1">
-            <Menu className="h-6 w-6" />
-          </button>
-          <div className="flex items-center">
-            <img src="/symfonia-logo.png" alt="Symfonia" className="h-10 relative top-[5px]" />
-            <span className="text-lg font-medium font-quicksand ml-4">Portal Użytkownika</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <select className="flex items-center gap-2 px-4 py-2 border rounded-md font-quicksand appearance-none cursor-pointer pr-10">
-              <option>ECM3 Jacek Paszek</option>
-              <option>CD Projekt Red S.A.</option>
-              <option>Platige Image S.A.</option>
-              <option>Techland Sp. z o.o.</option>
-              <option>11 bit studios S.A.</option>
-              <option>Bloober Team S.A.</option>
-            </select>
-            <ChevronDown className="h-5 w-5 text-green-600 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
-          </div>
-          <button className="p-1">
-            <Settings className="h-6 w-6" />
-          </button>
-          <AppSwitcher />
-          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-sm font-bold text-green-800">
-            JP
-          </div>
-        </div>
-      </header>
+      <AppHeader title={currentApp || "Portal Użytkownika"} />
 
       {/* Menu boczne i zawartość */}
       <div className="flex">
-        <aside className="w-64 min-h-[calc(100vh-64px)] border-r border-gray-200 bg-white">
-          <nav className="py-4">
-            <ul className="space-y-1">
-              <li>
-                <a href="#" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <Home className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Strona główna</span>
-                </a>
-              </li>
-              <li>
-                <a href="#" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <Apps className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Aplikacje i usługi</span>
-                </a>
-              </li>
-              <li>
-                <a href="#" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <HelpCircle className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Centrum wsparcia</span>
-                </a>
-              </li>
-              <li>
-                <a href="#" className="flex items-center gap-3 px-6 py-3 hover:bg-gray-50">
-                  <UserIcon className="h-5 w-5 text-gray-500" />
-                  <span className="text-base font-medium font-quicksand text-gray-800">Panel klienta</span>
-                </a>
-              </li>
-              <li>
-                <a href="#" className="flex items-center justify-between px-6 py-3 bg-gray-50">
-                  <div className="flex items-center gap-3">
-                    <Settings className="h-5 w-5 text-green-600" />
-                    <span className="text-base font-medium font-quicksand text-green-600">Ustawienia</span>
-                  </div>
-                  <ChevronDown className="h-5 w-5 text-green-600" />
-                </a>
-                <ul className="pl-6 border-l-2 border-green-600 ml-6">
-                  <li>
-                    <a href="/users" className="flex items-center gap-3 px-6 py-2 bg-gray-50">
-                      <span className="text-base font-medium text-green-600 font-quicksand">Użytkownicy</span>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="/firmy" className="flex items-center gap-3 px-6 py-2 hover:bg-gray-50">
-                      <span className="text-base font-medium font-quicksand text-gray-800">Firmy</span>
-                    </a>
-                  </li>
-                  <li>
-                    <a href="#" className="flex items-center gap-3 px-6 py-2 hover:bg-gray-50">
-                      <span className="text-base font-medium text-gray-800 font-quicksand">Klucze API</span>
-                    </a>
-                  </li>
-                </ul>
-              </li>
-            </ul>
-          </nav>
-        </aside>
+        <AppSidebar 
+          menuItems={menuItems}
+          activeItem={activeItem}
+        />
 
         {/* Zawartość główna */}
         <main className="flex-1 p-8">
@@ -1223,6 +1227,100 @@ export default function UsersPage() {
                 </div>
               </div>
 
+              {/* Sekcja Zespoły */}
+              <div className="space-y-4 mt-8">
+                <h3 className="font-bold text-lg flex items-center gap-2 font-quicksand">
+                  <Users className="h-5 w-5 text-purple-600" />
+                  Zespoły
+                </h3>
+
+                <div className="border rounded-lg overflow-hidden overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="p-4 text-left font-bold text-sm font-quicksand">Nazwa zespołu</th>
+                        <th className="p-4 text-left font-bold text-sm font-quicksand">Typ zespołu</th>
+                        <th className="p-4 text-left font-bold text-sm font-quicksand">Rola w zespole</th>
+                        <th className="p-4 text-center font-bold text-sm font-quicksand">Data dołączenia</th>
+                        <th className="p-4 text-right font-bold text-sm font-quicksand">Akcje</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {loadingTeams ? (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center">
+                            <div className="inline-block animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+                            <p className="mt-2 text-gray-600 font-quicksand">Ładowanie zespołów użytkownika...</p>
+                          </td>
+                        </tr>
+                      ) : userTeams.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-gray-500 font-quicksand">
+                            Użytkownik nie należy do żadnego zespołu
+                          </td>
+                        </tr>
+                      ) : (
+                        userTeams.map((team, index) => (
+                          <tr key={`${team.team_id}-${index}`} className="border-t border-gray-100">
+                            <td className="p-4 font-quicksand">{team.team_name}</td>
+                            <td className="p-4">
+                              <Badge
+                                variant="outline"
+                                className="bg-purple-50 text-purple-800 border-purple-100 font-quicksand"
+                              >
+                                {team.team_type === 'functional' ? 'Funkcjonalny' :
+                                 team.team_type === 'project' ? 'Projektowy' :
+                                 team.team_type === 'department' ? 'Departament' :
+                                 team.team_type === 'temporary' ? 'Tymczasowy' : team.team_type}
+                              </Badge>
+                            </td>
+                            <td className="p-4">
+                              <Badge
+                                variant="outline"
+                                className={
+                                  team.role_in_team === 'admin' ? 'bg-red-50 text-red-800 border-red-100' :
+                                  team.role_in_team === 'lead' ? 'bg-blue-50 text-blue-800 border-blue-100' :
+                                  'bg-gray-50 text-gray-800 border-gray-100'
+                                }
+                              >
+                                {team.role_in_team === 'admin' ? 'Administrator' :
+                                 team.role_in_team === 'lead' ? 'Lider' :
+                                 team.role_in_team === 'member' ? 'Członek' : team.role_in_team}
+                              </Badge>
+                            </td>
+                            <td className="p-4 text-center font-quicksand text-sm text-gray-600">
+                              {new Date(team.joined_at).toLocaleDateString('pl-PL', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </td>
+                            <td className="p-4">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" title="Usuń z zespołu" onClick={() => handleRemoveFromTeam(team)}>
+                                  <Trash2 className="h-5 w-5 text-green-600" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="flex justify-end">
+                  <Button
+                    className="bg-green-600 hover:bg-green-700 text-white font-quicksand"
+                    onClick={() => handleAddToTeam(selectedUser)}
+                  >
+                    Dodaj do zespołu <Plus className="ml-2 h-5 w-5" />
+                  </Button>
+                </div>
+              </div>
+
               <div className="space-y-4">
                 <h3 className="font-bold text-lg flex items-center gap-2 font-quicksand">
                   <AlertTriangle className="h-5 w-5 text-amber-600" />
@@ -1332,6 +1430,18 @@ export default function UsersPage() {
           loadingApplicationAccess={loadingApplicationAccess}
           onAddAppAccess={() => handleAddAppAccess(userToEdit)}
           onDeleteApplicationAccess={handleDeleteApplicationAccess}
+        />
+      )}
+
+      {userForTeamAccess && (
+        <TeamAssignmentDialog
+          open={isAddTeamDialogOpen}
+          onOpenChange={setIsAddTeamDialogOpen}
+          user={userForTeamAccess}
+          onSuccess={handleTeamAssignmentSuccess}
+          onError={(message) => {
+            showError(message)
+          }}
         />
       )}
     </div>
