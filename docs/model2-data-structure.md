@@ -2,6 +2,38 @@
 
 ## Przegląd
 
+### Koncepcja ewolucyjnej architektury "soft-fork"
+
+Model 2 to ewolucyjna architektura typu "soft-fork", która pozwala na stopniowe rozszerzanie systemu uprawnień bez łamania istniejącej funkcjonalności. Główna zaleta tej architektury to możliwość rozpoczęcia pracy z prostymi potrzebami, a następnie dodawania bardziej złożonych elementów przy zachowaniu poprzedniej struktury niezmienionej.
+
+**Droga rozwoju systemu:**
+
+**DZIŚ (Model 1/Enhanced Model 1):**
+- `user.roles.fk = ["fk_admin"]`
+- `user.companies = ["company1", "company2"]`
+- Proste RBAC: user + role + company = access
+
+**JUTRO (Model 2 - soft-fork):**
+- `roles.user42.fk = ["fk_admin"]` (istniejące, niezmienione)
+- `access.user42.tenant125 = ["company1"]` (istniejące, niezmienione)
+- `teams.księgowi.roles.fk = ["fk_admin"]` (nowe, additive)
+- `memberships.user42 = ["księgowi"]` (nowe, additive)
+- RBAC + REBAC: multiple ścieżki dostępu
+
+**POJUTRZE (Model 2 + Dynamic Resources):**
+- Wszystkie powyższe struktury (niezmienione)
+- `resource_types`, `resource_instances`, `relationships` (nowe)
+- Fine-grained permissions na poziomie resources
+- Full ReBAC: resource-based access control
+
+**Zalety architektury additive:**
+
+1. **Backward Compatibility** - istniejące aplikacje działają bez zmian
+2. **Flexible Migration Path** - można migrować stopniowo, aplikacja po aplikacji
+3. **OR Logic w OPA** - multiple ścieżki dostępu: direct roles LUB team membership LUB resource relationships
+4. **Zero Risk Deployment** - dodanie Model 2 nie wpływa na istniejącą funkcjonalność
+5. **Progressive Enhancement** - można dodawać funkcjonalność zgodnie z potrzebami biznesowymi
+
 Model 2 wprowadza separację ról aplikacyjnych od dostępu do firm, umożliwiając lepszą skalowalność i centralne zarządzanie uprawnieniami. W przeciwieństwie do Model 1, gdzie uprawnienia są osadzone bezpośrednio w kontekście firm, Model 2 rozdziela te aspekty na niezależne komponenty.
 
 ## Struktura Danych
@@ -449,173 +481,13 @@ function hasPermission(user_id, tenant_id, company_id, app, action):
 - Dane Model 1 można migrować do Model 2
 - Istniejące API może być kompatybilne
 
-## Migracja z Model 1
 
-### Mapowanie Danych
-
-**Model 1 → Model 2:**
-
-```python
-def migrate_model1_to_model2(model1_data):
-    model2 = {
-        "roles": {},
-        "access": {},
-        "teams": {},
-        "memberships": {},
-        "permissions": {}
-    }
-    
-    for tenant_id, tenant_data in model1_data.items():
-        # Migruj permissions (pozostają bez zmian)
-        for app, app_roles in tenant_data.get("roles", {}).items():
-            model2["permissions"][app] = app_roles
-        
-        # Migruj users
-        for user in tenant_data.get("users", []):
-            user_id = user["user_id"]
-            
-            # Utwórz roles dla każdej aplikacji (wykryj z permissions)
-            for app in model2["permissions"].keys():
-                user_roles = [role for role in user["roles"] 
-                             if role in model2["permissions"][app]]
-                if user_roles:
-                    if user_id not in model2["roles"]:
-                        model2["roles"][user_id] = {}
-                    model2["roles"][user_id][app] = user_roles
-            
-            # Utwórz access (wszystkie company w tenant'e)
-            if user_id not in model2["access"]:
-                model2["access"][user_id] = {}
-            # W Model 1 użytkownik ma dostęp do całego tenant'a
-            # Można to dostosować w zależności od logiki biznesowej
-            model2["access"][user_id][tenant_id] = ["default_company"]
-    
-    return model2
-```
-
-## Walidacja i Testy
-
-### Schema Validation
-
-```python
-from jsonschema import validate
-
-model2_schema = {
-    "type": "object",
-    "properties": {
-        "roles": {
-            "type": "object",
-            "patternProperties": {
-                "^[a-zA-Z0-9_-]+$": {  # user_id pattern
-                    "type": "object",
-                    "patternProperties": {
-                        "^[a-zA-Z0-9_-]+$": {  # app_name pattern
-                            "type": "array",
-                            "items": {"type": "string"}
-                        }
-                    }
-                }
-            }
-        },
-        "access": {
-            "type": "object",
-            "patternProperties": {
-                "^[a-zA-Z0-9_-]+$": {  # user_id pattern
-                    "type": "object",
-                    "patternProperties": {
-                        "^[a-zA-Z0-9_-]+$": {  # tenant_id pattern
-                            "type": "array",
-                            "items": {"type": "string"}
-                        }
-                    }
-                }
-            }
-        },
-        "teams": {
-            "type": "object",
-            "patternProperties": {
-                "^[a-zA-Z0-9_-]+$": {  # team_id pattern
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "description": {"type": "string"},
-                        "roles": {"type": "object"},
-                        "companies": {
-                            "type": "array",
-                            "items": {"type": "string"}
-                        },
-                        "tenant_id": {"type": "string"}
-                    },
-                    "required": ["name", "roles", "companies", "tenant_id"]
-                }
-            }
-        },
-        "memberships": {
-            "type": "object",
-            "patternProperties": {
-                "^[a-zA-Z0-9_-]+$": {  # user_id pattern
-                    "type": "array",
-                    "items": {"type": "string"}
-                }
-            }
-        },
-        "permissions": {
-            "type": "object",
-            "patternProperties": {
-                "^[a-zA-Z0-9_-]+$": {  # app_name pattern
-                    "type": "object",
-                    "patternProperties": {
-                        "^[a-zA-Z0-9_-]+$": {  # role_name pattern
-                            "type": "array",
-                            "items": {"type": "string"}
-                        }
-                    }
-                }
-            }
-        }
-    },
-    "required": ["roles", "access", "teams", "memberships", "permissions"]
-}
-
-def validate_model2_data(data):
-    try:
-        validate(instance=data, schema=model2_schema)
-        return True, "Validation successful"
-    except Exception as e:
-        return False, str(e)
-```
-
-### Test Cases
-
-```python
-def test_model2_authorization():
-    """Test scenariuszy autoryzacji w Model 2"""
-    
-    # Test 1: Bezpośrednie uprawnienia użytkownika
-    assert hasPermission("user42", "tenant125", "company1", "fk", "view_entry") == True
-    assert hasPermission("user42", "tenant125", "company1", "hr", "edit_profile") == False
-    
-    # Test 2: Uprawnienia zespołowe
-    assert hasPermission("user99", "tenant125", "company7", "hr", "edit_contract") == True
-    
-    # Test 3: Brak dostępu do firmy
-    assert hasPermission("user42", "tenant125", "company7", "fk", "view_entry") == False
-    
-    # Test 4: Kombinacja ról bezpośrednich i zespołowych
-    assert hasPermission("user150", "tenant125", "company7", "hr", "edit_contract") == True
-```
 
 ## Podsumowanie
 
-Model 2 zapewnia:
+Model 2 stanowi ewolucyjną architekturę typu "soft-fork", która umożliwia stopniowe rozszerzanie systemu uprawnień bez łamania istniejącej funkcjonalności. Ta struktura stanowi podstawę dla kolejnych subtasków implementacji w Data Provider API, politykach OPA oraz interfejsie Policy Management Portal.
 
-1. **Separację ról od dostępu** - lepszą skalowalność
-2. **Teams i REBAC-like features** - zarządzanie zbiorcze
-3. **Centralne permissions** - łatwiejsze utrzymanie
-4. **Backwards compatibility** - możliwość migracji z Model 1
-5. **Elastyczność UI** - może wyglądać jak Model 1 ale działać jak Model 2
-
-Ta struktura stanowi podstawę dla kolejnych subtasków implementacji w Data Provider API, politykach OPA oraz interfejsie Policy Management Portal. 
+**Szczegółowe informacje o zarządzaniu zespołami**: [TEAMS_MANAGEMENT.md](TEAMS_MANAGEMENT.md) - jak zespoły rozwiązują problemy skalowalności w dużych organizacjach. 
 
 ## Implementacja w OPA Rego
 
