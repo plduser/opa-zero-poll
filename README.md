@@ -4,6 +4,8 @@
 
 ![Architektura Docelowa](docs/architektura-docelowa.png)
 
+Disclaimer: Do przygotowania POC nie użyto żadnych (niebędących publicznie dostępnymi) zasobów firmowych. Portal i aplikacje są odtworzone na podstawie screenów i CSS. Elementy architektury pokazane na diagramie są uogólnione i nie zawierają w sobie żadnych specyficznych dla naszej firmy rozwiązań. Zależało mi na tym etapie na łatwiejszej dostępności w firmie tego repo, w razie dalszych działań repo może zostać przeniesione na zasoby firmowe, albo ukryte.
+
 ## Problem i Rozwiązanie
 
 W **dużych środowiskach enterprise z tysiącami tenantów**, standardowe mechanizmy synchronizacji danych z OPA są niewystarczające:
