@@ -264,7 +264,7 @@ sequenceDiagram
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) – szczegółowa architektura systemu
 - [docs/PORTAL_MANAGEMENT.md](docs/PORTAL_MANAGEMENT.md) – zarządzanie uprawnieniami w Portal Symfonia
-- [docs/OPAL_DYNAMIC_MULTI_TENANT.md](docs/OPAL_DYNAMIC_MULTI_TENANT.md) – dynamiczne dodawanie tenantów i single topic multi-tenant
+- [docs/OPAL_SINGLE_TOPIC_MULTI_TENANT.md](docs/OPAL_SINGLE_TOPIC_MULTI_TENANT.md) – dynamiczne dodawanie tenantów i single topic multi-tenant
 - [docs/model2-data-structure.md](docs/model2-data-structure.md) – specyfikacja Model 2
 - [docs/TEAMS_MANAGEMENT.md](docs/TEAMS_MANAGEMENT.md) – zarządzanie zespołami w dużych organizacjach
 - [docs/model2-example-scenarios.md](docs/model2-example-scenarios.md) – przykłady użycia
