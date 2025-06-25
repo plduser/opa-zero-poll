@@ -32,7 +32,7 @@ export function TeamAssignmentDialog({
   const [teams, setTeams] = useState<Team[]>([])
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null)
   const [selectedTeamDetails, setSelectedTeamDetails] = useState<TeamDetails | null>(null)
-  const [selectedRole, setSelectedRole] = useState<'member' | 'leader' | 'admin'>('member')
+  const [selectedRole, setSelectedRole] = useState<'member' | 'lead' | 'admin'>('member')
   const [searchQuery, setSearchQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [loadingTeams, setLoadingTeams] = useState(false)
@@ -142,7 +142,7 @@ export function TeamAssignmentDialog({
   const getRoleLabel = (role: string) => {
     switch (role) {
       case 'admin': return 'Administrator'
-      case 'leader': return 'Lider'
+      case 'lead': return 'Lider'
       case 'member': return 'Członek'
       default: return role
     }
@@ -252,39 +252,7 @@ export function TeamAssignmentDialog({
             )}
           </div>
 
-          {/* Wybór roli */}
-          {selectedTeam && (
-            <div className="space-y-3">
-              <Label htmlFor="role-select" className="font-medium font-quicksand">
-                Rola w zespole
-              </Label>
-              <Select value={selectedRole} onValueChange={(value) => setSelectedRole(value as any)}>
-                <SelectTrigger id="role-select" className="font-quicksand">
-                  <SelectValue placeholder="Wybierz rolę..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="member" className="font-quicksand">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded bg-gray-400"></div>
-                      Członek - podstawowe uprawnienia
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="leader" className="font-quicksand">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded bg-blue-400"></div>
-                      Lider - zarządzanie zespołem
-                    </div>
-                  </SelectItem>
-                  <SelectItem value="admin" className="font-quicksand">
-                    <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded bg-red-400"></div>
-                      Administrator - pełne uprawnienia
-                    </div>
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+
 
           {/* Szczegóły wybranego zespołu */}
           {selectedTeam && (
@@ -357,14 +325,7 @@ export function TeamAssignmentDialog({
           )}
         </div>
 
-        <DialogFooter className="flex flex-col gap-2">
-          {/* Debug informacji - usuń po naprawieniu */}
-          {open && (
-            <div className="text-xs text-gray-500 font-mono bg-gray-100 p-2 rounded">
-              Debug: selectedTeam={!!selectedTeam ? '✅' : '❌'} | selectedRole={selectedRole} | user_id={!!user?.user_id ? '✅' : '❌'} | submitting={submitting ? '⏳' : '✅'}
-            </div>
-          )}
-          
+        <DialogFooter>
           <div className="flex gap-2 justify-end">
             <Button 
               variant="outline" 
@@ -376,9 +337,9 @@ export function TeamAssignmentDialog({
             </Button>
             <Button 
               onClick={handleSubmit}
-              disabled={!selectedTeam || !selectedRole || !user?.user_id || submitting}
+              disabled={!selectedTeam || !user?.user_id || submitting}
               className={`font-quicksand transition-all duration-200 ${
-                !selectedTeam || !selectedRole || !user?.user_id || submitting
+                !selectedTeam || !user?.user_id || submitting
                   ? 'bg-gray-400 hover:bg-gray-400 text-gray-700 cursor-not-allowed opacity-70 border border-gray-300'
                   : 'bg-green-600 hover:bg-green-700 text-white border border-green-600'
               }`}
@@ -390,8 +351,6 @@ export function TeamAssignmentDialog({
                 </>
               ) : !selectedTeam ? (
                 'Wybierz zespół'
-              ) : !selectedRole ? (
-                'Wybierz rolę'
               ) : (
                 'Dodaj do zespołu'
               )}

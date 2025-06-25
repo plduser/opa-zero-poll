@@ -7,7 +7,7 @@ export interface Team {
   tenant_id: string
   team_name: string
   description?: string
-  team_type: 'functional' | 'project' | 'department' | 'temporary'
+  team_type: 'functional' | 'project' | 'department' | 'external'
   status: 'active' | 'inactive' | 'archived'
   created_at: string
   updated_at?: string
@@ -56,7 +56,7 @@ export interface UserTeam {
   team_id: string
   team_name: string
   description?: string
-  team_type: 'functional' | 'project' | 'department' | 'temporary'
+  team_type: 'functional' | 'project' | 'department' | 'external'
   tenant_id: string
   role_in_team: 'member' | 'lead' | 'admin'
   joined_at: string
@@ -67,14 +67,14 @@ export interface CreateTeamData {
   team_name: string
   tenant_id: string
   description?: string
-  team_type?: 'functional' | 'project' | 'department' | 'temporary'
+  team_type?: 'functional' | 'project' | 'department' | 'external'
 }
 
 // Dane do aktualizacji zespołu
 export interface UpdateTeamData {
   team_name?: string
   description?: string
-  team_type?: 'functional' | 'project' | 'department' | 'temporary'
+  team_type?: 'functional' | 'project' | 'department' | 'external'
   status?: 'active' | 'inactive' | 'archived'
 }
 
