@@ -92,6 +92,12 @@ erDiagram
         timestamp created_at
     }
 
+    PROFILE_ROLES {
+        varchar profile_id FK
+        varchar role_id FK
+        timestamp created_at
+    }
+
     USER_PROFILES {
         varchar user_id FK
         varchar profile_id FK
@@ -117,11 +123,7 @@ erDiagram
         timestamp created_at
     }
 
-    PROFILE_PERMISSIONS {
-        varchar profile_id FK
-        varchar permission_id FK
-        timestamp created_at
-    }
+
 
     TEAM_PROFILES {
         varchar team_id FK
@@ -157,9 +159,9 @@ erDiagram
 
     %% Permission mappings
     ROLES ||--o{ ROLE_PERMISSIONS : "grants"
-    PROFILES ||--o{ PROFILE_PERMISSIONS : "grants"
     PERMISSIONS ||--o{ ROLE_PERMISSIONS : "granted_by"
-    PERMISSIONS ||--o{ PROFILE_PERMISSIONS : "granted_by"
+    PROFILES ||--o{ PROFILE_ROLES : "maps_to"
+    ROLES ||--o{ PROFILE_ROLES : "mapped_from"
 
     %% Team relationships
     TEAMS ||--o{ TEAM_PROFILES : "has"
@@ -337,9 +339,9 @@ erDiagram
 - `role_id` + `permission_id` → Composite PK
 - Określa jakie uprawnienia zawiera dana rola
 
-### **PROFILE_PERMISSIONS** - Mapowanie profili na uprawnienia
-- `profile_id` + `permission_id` → Composite PK
-- Określa jakie uprawnienia zawiera dany profil
+### **PROFILE_ROLES** - Mapowanie profili na role
+- `profile_id` + `role_id` → Composite PK
+- Określa jakie role zawiera dany profil
 
 ### **TEAM_PROFILES** - Profile zespołowe
 - `team_id` + `profile_id` → Composite PK
@@ -368,12 +370,12 @@ USERS → USER_ROLES → ROLES → ROLE_PERMISSIONS → PERMISSIONS
 
 **2. Profile Aplikacyjne:**
 ```
-USERS → USER_PROFILES → PROFILES → PROFILE_PERMISSIONS → PERMISSIONS
+USERS → USER_PROFILES → PROFILES → PROFILE_ROLES → ROLES → ROLE_PERMISSIONS → PERMISSIONS
 ```
 
 **3. Zespoły (REBAC):**
 ```
-USERS → USER_TEAMS → TEAMS → TEAM_PROFILES → PROFILES → PROFILE_PERMISSIONS → PERMISSIONS
+USERS → USER_TEAMS → TEAMS → TEAM_PROFILES → PROFILES → PROFILE_ROLES → ROLES → ROLE_PERMISSIONS → PERMISSIONS
 ```
 
 ### 🏢 **Dostęp do Firm**
