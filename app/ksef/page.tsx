@@ -47,70 +47,46 @@ export default function KSEFPage() {
     isLoading: true
   })
 
-  // Sprawdzanie uprawnień OPA przy ładowaniu komponentu
+  // Stan dla wybranej firmy
+  const [selectedCompany, setSelectedCompany] = useState<any>(null)
+
+  // Sprawdzanie uprawnień OPA przy ładowaniu komponentu i zmianie firmy
   useEffect(() => {
     console.log("[KSEF] useEffect uruchomiony - sprawdzanie uprawnień...")
     console.log("[KSEF] Obecny stan permissions:", permissions)
+    console.log("[KSEF] Wybrana firma:", selectedCompany)
+    
     if (typeof window === 'undefined') {
       console.log("[KSEF] Window undefined - działamy po stronie serwera")
       return
     }
+    
     const checkPermissions = async () => {
       try {
         // Pobierz aktualnego użytkownika z localStorage
-        let userId = "user123" // Domyślnie Jan Kowalski (księgowa)
-        let tenantId = "tenant1" // Domyślny tenant
-        
-        if (typeof window !== 'undefined') {
-          const storedUser = localStorage.getItem('currentUser')
-          if (storedUser) {
-            try {
-              const user = JSON.parse(storedUser)
-              userId = user.id
-              
-              // Pobierz dane użytkownika z API aby znaleźć jego tenant
-              const userResponse = await fetch('/api/users')
-              const userData = await userResponse.json()
-              
-              if (userData.success && userData.users) {
-                const fullUserData = userData.users.find((u: any) => u.id === userId)
-                if (fullUserData && fullUserData.tenants && fullUserData.tenants.length > 0) {
-                  // Użyj domyślnego tenanta użytkownika
-                  const defaultTenant = fullUserData.tenants.find((t: any) => t.is_default) || fullUserData.tenants[0]
-                  tenantId = defaultTenant.tenant_id
-                  console.log(`[KSEF] Znaleziony tenant dla użytkownika ${userId}: ${tenantId}`)
-                }
-              }
-            } catch (e) {
-              console.error('Błąd parsowania użytkownika z localStorage:', e)
-            }
-          }
-        }
-        
-        console.log(`[KSEF] Sprawdzanie uprawnień dla użytkownika: ${userId}, tenant: ${tenantId}`)
-        
-        const [purchaseAccess, salesAccess] = await Promise.all([
-          canViewPurchaseInvoices(userId, tenantId),
-          canViewSalesInvoices(userId, tenantId)
-        ])
+        let userId = localStorage.getItem('currentUserId') || 'user700'
+        const tenantId = 'tenant125'
+        const companyId = selectedCompany?.company_id // Używamy wybranej firmy
         
         console.log(`[KSEF] Sprawdzanie uprawnień dla użytkownika: ${userId}`)
-        console.log(`[KSEF] Dostęp do faktur zakupu: ${purchaseAccess}`)
-        console.log(`[KSEF] Dostęp do faktur sprzedaży: ${salesAccess}`)
+        console.log(`[KSEF] Kontekst firmy: ${companyId || 'brak'}`)
         
-        console.log(`[KSEF] Ustawianie nowych uprawnień:`, {
-          canViewPurchase: purchaseAccess,
-          canViewSales: salesAccess,
-          isLoading: false
-        })
+        // Sprawdź uprawnienia z kontekstem firmy
+        const [canViewPurchase, canViewSales] = await Promise.all([
+          canViewPurchaseInvoices(userId, tenantId, companyId),
+          canViewSalesInvoices(userId, tenantId, companyId)
+        ])
+        
+        console.log(`[KSEF] Dostęp do faktur zakupu: ${canViewPurchase}`)
+        console.log(`[KSEF] Dostęp do faktur sprzedaży: ${canViewSales}`)
         
         setPermissions({
-          canViewPurchase: purchaseAccess,
-          canViewSales: salesAccess,
+          canViewPurchase,
+          canViewSales,
           isLoading: false
         })
       } catch (error) {
-        console.error("Błąd sprawdzania uprawnień OPA:", error)
+        console.error('[KSEF] Błąd sprawdzania uprawnień:', error)
         setPermissions({
           canViewPurchase: false,
           canViewSales: false,
@@ -118,8 +94,63 @@ export default function KSEFPage() {
         })
       }
     }
-    
+
     checkPermissions()
+  }, [selectedCompany]) // Dodajemy selectedCompany jako dependency
+
+  // Inicjalizacja wybranej firmy z localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const storedCompany = localStorage.getItem('selectedCompany')
+      if (storedCompany) {
+        try {
+          const company = JSON.parse(storedCompany)
+          console.log(`[KSEF] Inicjalizacja - wybrana firma z localStorage:`, company)
+          setSelectedCompany(company)
+        } catch (e) {
+          console.error('Błąd parsowania firmy z localStorage:', e)
+          setSelectedCompany(null)
+        }
+      }
+    }
+  }, []) // Tylko przy mount
+
+  // Effect do monitorowania zmian wybranej firmy w localStorage
+  useEffect(() => {
+    const handleStorageChange = () => {
+      const storedCompany = localStorage.getItem('selectedCompany')
+      if (storedCompany) {
+        try {
+          const company = JSON.parse(storedCompany)
+          console.log(`[KSEF] Zmiana firmy wykryta:`, company)
+          setSelectedCompany(company)
+        } catch (e) {
+          console.error('Błąd parsowania firmy z localStorage:', e)
+          setSelectedCompany(null)
+        }
+      } else {
+        setSelectedCompany(null)
+      }
+    }
+
+    const handleCompanyChanged = (event: CustomEvent) => {
+      console.log(`[KSEF] Custom event - zmiana firmy:`, event.detail.company)
+      setSelectedCompany(event.detail.company)
+    }
+
+    // Nasłuchuj zmiany w localStorage (dla innych kart)
+    window.addEventListener('storage', handleStorageChange)
+    
+    // Nasłuchuj custom event (dla tej samej karty)
+    window.addEventListener('companyChanged', handleCompanyChanged as EventListener)
+
+    // Sprawdź od razu przy mount
+    handleStorageChange()
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('companyChanged', handleCompanyChanged as EventListener)
+    }
   }, [])
 
   // Przykładowe dane użytkowników
@@ -343,6 +374,17 @@ export default function KSEFPage() {
 
         {/* Zawartość główna */}
         <main className="flex-1 p-8">
+          {/* Debug Info - Kontekst użytkownika i firmy */}
+          <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
+            <h3 className="text-sm font-medium text-gray-700 mb-2">Kontekst autoryzacji:</h3>
+            <div className="text-xs text-gray-600 space-y-1">
+              <div>Użytkownik: {typeof window !== 'undefined' ? localStorage.getItem('currentUserId') || 'user700' : 'ładowanie...'}</div>
+              <div>Tenant: tenant125</div>
+              <div>Wybrana firma: {selectedCompany ? `${selectedCompany.company_id} (${selectedCompany.company_name})` : 'Brak'}</div>
+              <div>Uprawnienia: {permissions.isLoading ? 'Sprawdzanie...' : `Zakup: ${permissions.canViewPurchase}, Sprzedaż: ${permissions.canViewSales}`}</div>
+            </div>
+          </div>
+
           {showSuccessMessage && (
             <div className="flex items-start gap-4 p-4 mb-6 bg-purple-50 border border-purple-200 rounded-lg">
               <CheckCircle className="h-6 w-6 text-purple-800 flex-shrink-0" />
@@ -410,6 +452,8 @@ export default function KSEFPage() {
               </div>
             </div>
           </footer>
+
+
         </main>
       </div>
 
