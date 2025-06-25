@@ -22,6 +22,7 @@ COPY users_endpoints.py .
 COPY companies_endpoints.py .
 COPY profiles_endpoints.py .
 COPY user_profiles_endpoints.py .
+COPY teams_endpoints.py .
 COPY user_data_sync.py .
 COPY profile_role_mapper.py .
 COPY shared/ ./shared/

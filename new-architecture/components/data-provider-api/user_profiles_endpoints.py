@@ -258,49 +258,100 @@ def register_user_profiles_endpoints(app):
 
     @app.route('/api/users/<user_id>/companies', methods=['GET'])
     def get_user_companies(user_id):
-        """Pobierz firmy przypisane do użytkownika"""
+        """Pobierz firmy przypisane do użytkownika (context-aware dla aplikacji)"""
         try:
-            logger.info(f"Pobieranie firm dla użytkownika {user_id}")
+            # Pobierz parametry filtru z query
+            app_id = request.args.get('app_id')  # Nowy parametr - kontekst aplikacji
+            tenant_id = request.args.get('tenant_id')
+            
+            logger.info(f"Pobieranie firm dla użytkownika {user_id} (app_id: {app_id}, tenant_id: {tenant_id})")
             
             with get_db_cursor() as cursor:
-                # Pobierz firmy przypisane do użytkownika (używamy user_access zamiast user_companies)
-                cursor.execute("""
+                # === CONTEXT-AWARE: Użyj user_effective_access view (dynamiczny access) ===
+                base_query = """
                     SELECT 
-                        ua.company_id,
-                        c.company_name,
+                        uea.company_id,
+                        uea.company_name,
                         c.company_code,
-                        c.tenant_id,
-                        ua.granted_at,
-                        ua.granted_by,
-                        ua.access_type
-                    FROM user_access ua
-                    JOIN companies c ON ua.company_id = c.company_id
-                    WHERE ua.user_id = %s
-                    ORDER BY c.company_name
-                """, (user_id,))
+                        uea.tenant_id,
+                        c.nip,
+                        c.description,
+                        c.status,
+                        c.created_at,
+                        -- Agreguj źródła dostępu w jeden rekord
+                        json_agg(
+                            json_build_object(
+                                'type', uea.source_type,
+                                'source_id', uea.source_id
+                            )
+                        ) as access_sources
+                    FROM user_effective_access uea
+                    JOIN companies c ON uea.company_id = c.company_id
+                    WHERE uea.user_id = %s
+                """
                 
+                params = [user_id]
+                conditions = []
+                
+                # Filtrowanie po tenant_id jeśli podano
+                if tenant_id:
+                    conditions.append("AND uea.tenant_id = %s")
+                    params.append(tenant_id)
+                
+                # === KLUCZOWA NAPRAWA: Context-aware dla aplikacji ===
+                if app_id:
+                    # Filtruj firmy tylko dla kontekstu danej aplikacji
+                    # Sprawdź czy user ma dostęp do tej aplikacji dla każdej firmy
+                    base_query += """
+                        AND EXISTS (
+                            SELECT 1 FROM user_effective_permissions uep
+                            WHERE uep.user_id = uea.user_id 
+                            AND uep.tenant_id = uea.tenant_id
+                            AND uep.app_id = %s
+                        )
+                    """
+                    params.append(app_id)
+                    conditions.append("-- aplikacja: " + app_id)
+                
+                # Dodaj warunki
+                final_query = base_query + " ".join(conditions) + """ 
+                    GROUP BY uea.company_id, uea.company_name, c.company_code, uea.tenant_id, 
+                             c.nip, c.description, c.status, c.created_at
+                    ORDER BY uea.company_name
+                """
+                
+                cursor.execute(final_query, params)
                 companies = cursor.fetchall()
                 
-                # Przekształć wyniki do formatu JSON
+                # Przekształć wyniki do formatu JSON z informacją o źródłach dostępu
                 result_companies = []
                 for row in companies:
-                    result_companies.append({
+                    company_data = {
                         "company_id": row['company_id'],
                         "company_name": row['company_name'],
                         "company_code": row['company_code'],
                         "tenant_id": row['tenant_id'],
-                        "granted_at": row['granted_at'].isoformat() if row['granted_at'] else None,
-                        "granted_by": row['granted_by'],
-                        "access_type": row['access_type']
-                    })
+                        "nip": row['nip'],
+                        "description": row['description'],
+                        "status": row['status'],
+                        "created_at": row['created_at'].isoformat() if row['created_at'] else None,
+                        # === NOWA INFORMACJA: Wszystkie źródła dostępu ===
+                        "access_sources": row['access_sources']  # JSON array ze wszystkimi źródłami
+                    }
+                    result_companies.append(company_data)
                 
                 result = {
                     "user_id": user_id,
                     "companies": result_companies,
-                    "total_companies": len(companies)
+                    "total_companies": len(companies),
+                    "context": {
+                        "app_id": app_id,
+                        "tenant_id": tenant_id,
+                        "is_context_aware": app_id is not None
+                    }
                 }
                 
-                logger.info(f"✅ Znaleziono {len(companies)} firm dla użytkownika {user_id}")
+                logger.info(f"✅ Znaleziono {len(companies)} firm dla użytkownika {user_id} (context: {app_id})")
                 return jsonify(result)
                 
         except Exception as e:

@@ -77,6 +77,13 @@ try:
 except ImportError as e:
     USER_PROFILES_ENDPOINTS_AVAILABLE = False
 
+# Import Teams Management endpoints
+try:
+    from teams_endpoints import register_teams_endpoints
+    TEAMS_ENDPOINTS_AVAILABLE = True
+except ImportError as e:
+    TEAMS_ENDPOINTS_AVAILABLE = False
+
 # Import User Data Sync Service
 try:
     from user_data_sync import UserDataSyncService, notify_user_change, sync_full_tenant, get_sync_metrics
@@ -97,7 +104,7 @@ try:
     INIT_DB_AVAILABLE = True
 except ImportError as e:
     INIT_DB_AVAILABLE = False
-    logger.warning(f"Database initialization not available: {e}")
+
 
 # Konfiguracja bazy danych będzie dostępna przez DATABASE_INTEGRATION_AVAILABLE
 
@@ -222,11 +229,17 @@ def root():
     """Endpoint główny - informacje o API"""
     return jsonify({
         "service": "Data Provider API",
-        "version": "3.1.0",
-        "description": "Multi-tenant ACL data provider for OPA with database integration",
+        "version": "3.2.0",
+        "description": "Multi-tenant ACL data provider for OPA with database integration. Updated in v3.2.0: Complete Teams management endpoints",
         "database_integration": DATABASE_INTEGRATION_AVAILABLE,
         "openapi_docs": "/openapi.json",
         "swagger_ui": "/docs",
+        "teams_endpoints": TEAMS_ENDPOINTS_AVAILABLE,
+        "users_endpoints": USERS_ENDPOINTS_AVAILABLE,
+        "companies_endpoints": COMPANIES_ENDPOINTS_AVAILABLE,
+        "profiles_endpoints": PROFILES_ENDPOINTS_AVAILABLE,
+        "user_profiles_endpoints": USER_PROFILES_ENDPOINTS_AVAILABLE,
+        "opal_endpoints": OPAL_ENDPOINTS_AVAILABLE,
         "timestamp": datetime.datetime.utcnow().isoformat()
     })
 
@@ -350,6 +363,14 @@ if USER_PROFILES_ENDPOINTS_AVAILABLE:
     except Exception as e:
         logger.error(f"❌ Failed to register user profiles endpoints: {e}")
         USER_PROFILES_ENDPOINTS_AVAILABLE = False
+
+if TEAMS_ENDPOINTS_AVAILABLE:
+    try:
+        register_teams_endpoints(app)
+        logger.info("✅ Teams management endpoints registered")
+    except Exception as e:
+        logger.error(f"❌ Failed to register teams endpoints: {e}")
+        TEAMS_ENDPOINTS_AVAILABLE = False
 
 # Rejestracja OPAL External Data Sources endpoints
 if OPAL_ENDPOINTS_AVAILABLE:

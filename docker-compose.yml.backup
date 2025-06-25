@@ -1,0 +1,223 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database - centralna baza danych dla Model 2
+  postgres-db:
+    image: postgres:13
+    container_name: postgres-db
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=opa_user
+      - POSTGRES_PASSWORD=opa_password
+      - POSTGRES_DB=opa_zero_poll
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./new-architecture/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./new-architecture/database/enhanced_seed_complete.sql:/docker-entrypoint-initdb.d/02-enhanced_seed_data.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opa_user -d opa_zero_poll"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # Data Provider API - symuluje zewnętrzny system ACL
+  data-provider-api:
+    build: ./new-architecture/components/data-provider-api
+    platform: linux/arm64
+    container_name: data-provider-api
+    ports:
+      - "8110:8110"
+    environment:
+      - PORT=8110
+      - DEBUG=false
+      - WEBHOOK_SECRET=twoj_super_tajny_klucz123!@#
+      - OPA_URL=http://opa-standalone-new:8181
+      - PROVISIONING_API_URL=http://provisioning-api-new:8010
+      - DISABLE_JWT_VALIDATION=true
+      # Database connection
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=opa_user
+      - DB_PASSWORD=opa_password
+      - DB_NAME=opa_zero_poll
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8110/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # Provisioning API - zarządzanie tenantami
+  provisioning-api:
+    build: ./new-architecture/components/provisioning-api
+    platform: linux/arm64
+    container_name: provisioning-api-new
+    ports:
+      - "8010:8010"
+    environment:
+      - PORT=8010
+      - DEBUG=false
+      # Database connection (replacing SQLite)
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=opa_user
+      - DB_PASSWORD=opa_password
+      - DB_NAME=opa_zero_poll
+      # OPAL integration
+      - OPAL_SERVER_URL=http://opal-server:7002
+      - DATA_PROVIDER_API_URL=http://data-provider-api:8110
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # OPA Standalone - autoryzacja z politikami RBAC
+  opa-standalone:
+    build: ./new-architecture/components/opa-standalone
+    platform: linux/arm64
+    container_name: opa-standalone-new
+    ports:
+      - "8181:8181"
+    environment:
+      - OPA_LOG_LEVEL=info
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8181/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # Redis - broadcast channel dla OPAL Server/Client komunikacji
+  redis-broadcast:
+    image: redis:7-alpine
+    container_name: redis-broadcast
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # OPAL Server - Policy Information Point (PIP)
+  opal-server:
+    image: permitio/opal-server:latest
+    container_name: opal-server
+    ports:
+      - "7002:7002"  # OPAL Server API
+    volumes:
+      - ./data-config.json:/data-config.json
+    environment:
+      # Broadcast channel (Redis)
+      - OPAL_BROADCAST_URI=redis://redis-broadcast:6379
+      
+      # GitHub Policy Repository - WŁĄCZONE z lokalnym repo
+      - OPAL_POLICY_REPO_URL=https://github.com/plduser/opa-zero-poll.git
+      - OPAL_POLICY_REPO_MAIN_BRANCH=main
+      - OPAL_POLICY_REPO_PATH=new-architecture/components/opa-standalone/policies
+      - OPAL_POLICY_REPO_POLLING_INTERVAL=30
+      
+      # Data Configuration
+      - OPAL_DATA_CONFIG_SOURCES_FILE_PATH=/data-config.json
+      - OPAL_DATA_CONFIG_ENABLED=true
+      # DYNAMICZNE DANE - używamy data-config.json zamiast OPAL_ALL_DATA_URL
+      # - OPAL_ALL_DATA_URL=http://data-provider-api:8110/opal/full-snapshot
+      
+      # Server Performance
+      - OPAL_LOG_LEVEL=DEBUG
+    depends_on:
+      - redis-broadcast
+      - provisioning-api
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7002/healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - new-arch-network
+
+  # OPAL Client - Synchronizator (Policy Enforcement Point)
+  opal-client:
+    image: permitio/opal-client:latest
+    container_name: opal-client
+    ports:
+      - "7001:7000"  # OPAL Client API
+    environment:
+      # OPAL Server connection
+      - OPAL_SERVER_URL=http://opal-server:7002
+      - OPAL_FETCH_PROVIDER_ENABLED=true
+      - OPAL_INLINE_OPA_ENABLED=false
+      
+      # Broadcast channel (Redis)
+      - OPAL_BROADCAST_URI=redis://redis-broadcast:6379
+      
+      # OPA connection (External OPA)
+      - OPAL_POLICY_STORE_URL=http://opa-standalone-new:8181
+      
+      # Policy subscription - subskrybuje polityki z OPAL Server
+      - OPAL_POLICY_SUBSCRIPTION_DIRS=new-architecture/components/opa-standalone/policies
+      
+      # Data sources configuration - JEDEN TOPIC dla wielu tenantów
+      - OPAL_DATA_UPDATER_ENABLED=true
+      - OPAL_DATA_TOPICS=multi_tenant_data
+      
+      # External Data Sources - wskazuje na Data Provider API
+      - OPAL_DATA_CONFIG_SOURCES=http://data-provider-api:8110/data/config
+      
+      # Włączenie polityk z GitHub repo
+      - OPAL_POLICY_UPDATER_ENABLED=true
+      
+      # Debug
+      - OPAL_LOG_LEVEL=DEBUG
+    depends_on:
+      - opal-server
+      - opa-standalone
+      - redis-broadcast
+      - data-provider-api
+    networks:
+      - new-arch-network
+
+
+
+volumes:
+  postgres_data:
+    driver: local
+  provisioning_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  new-arch-network:
+    driver: bridge

@@ -21,6 +21,7 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import Link from "next/link"
 import { AppSwitcher } from "@/app/components/app-switcher"
+import { PortalSettingsDropdown } from "@/app/components/portal-settings-dropdown"
 import { UsersTab } from "./tabs/users-tab"
 import { GroupsTab } from "./tabs/groups-tab"
 import { ProfilesTab } from "./tabs/profiles-tab"
@@ -55,9 +56,7 @@ export default function FkPermissionsPage() {
             </select>
             <ChevronDown className="h-5 w-5 text-green-600 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
           </div>
-          <button className="p-1">
-            <Settings className="h-6 w-6" />
-          </button>
+          <PortalSettingsDropdown />
           <AppSwitcher />
           <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-sm font-bold text-green-800">
             JP

@@ -6,11 +6,11 @@ const DATA_PROVIDER_API_URL = process.env.DATA_PROVIDER_API_URL || 'http://local
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
-    const tenant = searchParams.get('tenant')
+    const tenant_id = searchParams.get('tenant_id')
     
     let url = `${DATA_PROVIDER_API_URL}/api/companies`
-    if (tenant) {
-      url += `?tenant=${encodeURIComponent(tenant)}`
+    if (tenant_id) {
+      url += `?tenant_id=${encodeURIComponent(tenant_id)}`
     }
     
     console.log(`[API Companies] Pobieranie firm: ${url}`)

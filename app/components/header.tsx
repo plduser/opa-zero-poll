@@ -1,8 +1,9 @@
 "use client"
 
-import { Menu, ChevronDown, Settings, User } from "lucide-react"
+import { Menu, ChevronDown, User } from "lucide-react"
 import { useState, useEffect } from "react"
 import { AppSwitcher } from "./app-switcher"
+import { PortalSettingsDropdown } from "./portal-settings-dropdown"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 
@@ -220,9 +221,7 @@ export function Header({ title }: HeaderProps) {
             </select>
             <ChevronDown className="h-5 w-5 text-green-600 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
           </div>
-          <button className="p-1">
-            <Settings className="h-6 w-6" />
-          </button>
+          <PortalSettingsDropdown />
           <AppSwitcher />
           <button 
             onClick={() => setIsUserDialogOpen(true)}
