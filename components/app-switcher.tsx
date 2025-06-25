@@ -72,6 +72,14 @@ export function AppSwitcher() {
       color: "#9333EA",
       url: "/handel",
     },
+    {
+      id: "ustawienia",
+      name: "Ustawienia",
+      shortName: "U",
+      icon: "/app-icons/settings-icon.png",
+      color: "#6B7280",
+      url: "/ustawienia/zespoly",
+    },
   ]
 
   return (

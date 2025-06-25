@@ -1,10 +1,14 @@
 "use client"
 
 import { useState } from "react"
-import { Menu, ChevronDown, Settings, Home, Database, FileText, BarChart3, DollarSign } from "lucide-react"
+import { Menu, ChevronDown } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { AppSwitcher } from "@/app/components/app-switcher"
+import { PortalSettingsDropdown } from "@/app/components/portal-settings-dropdown"
+import { AppSidebar } from "@/components/app-sidebar"
+import { AppHeader } from "@/components/app-header"
+import { useAppMenu } from "@/hooks/use-app-menu"
 import Link from "next/link"
 import {
   Dialog,
@@ -33,7 +37,7 @@ export default function FkPage() {
   const [selectedDictionary, setSelectedDictionary] = useState<string | null>(null)
   const [isAccessDialogOpen, setIsAccessDialogOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
-  const [isSettingsMenuOpen, setIsSettingsMenuOpen] = useState(false)
+  const { menuItems, activeItem, currentApp } = useAppMenu()
 
   // Przykładowe grupy dla dialogu nadawania dostępu
   const groups = [
@@ -161,186 +165,24 @@ export default function FkPage() {
     }
   }
 
-  return (
+    return (
     <div className="min-h-screen bg-white">
-      {/* Nagłówek - teraz rozciąga się na całą szerokość */}
-      <header className="flex justify-between items-center px-6 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-4">
-          <button className="p-1">
-            <Menu className="h-6 w-6" />
-          </button>
-          <div className="flex items-center">
-            <img src="/symfonia-logo.png" alt="Symfonia" className="h-10 relative top-[5px]" />
-            <span className="text-lg font-medium font-quicksand ml-4">Finanse i Księgowość</span>
-          </div>
-        </div>
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <select className="flex items-center gap-2 px-4 py-2 border rounded-md font-quicksand appearance-none cursor-pointer pr-10">
-              <option>CD Projekt Red S.A.</option>
-              <option>Platige Image S.A.</option>
-              <option>Techland Sp. z o.o.</option>
-              <option>11 bit studios S.A.</option>
-              <option>Bloober Team S.A.</option>
-            </select>
-            <ChevronDown className="h-5 w-5 text-green-600 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none" />
-          </div>
-          <button className="p-1">
-            <Settings className="h-6 w-6" />
-          </button>
-          <AppSwitcher />
-          <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-sm font-bold text-green-800">
-            JP
-          </div>
-        </div>
-      </header>
+      <AppHeader title={currentApp} />
 
       {/* Menu boczne i zawartość - teraz sidebar zaczyna się pod nagłówkiem */}
       <div className="flex">
-        <aside className="w-64 min-h-[calc(100vh-64px)] border-r border-gray-200 bg-white">
-          <nav className="py-4">
-            <ul className="space-y-1">
-              <li>
-                <a
-                  href="#"
-                  className={`flex items-center gap-3 px-6 py-3 ${
-                    selectedModule === "dashboard" ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                  onClick={() => setSelectedModule("dashboard")}
-                >
-                  <Home className={`h-5 w-5 ${selectedModule === "dashboard" ? "text-green-600" : "text-gray-500"}`} />
-                  <span
-                    className={`text-base font-medium font-quicksand ${
-                      selectedModule === "dashboard" ? "text-green-600" : "text-gray-800"
-                    }`}
-                  >
-                    Pulpit
-                  </span>
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  className={`flex items-center gap-3 px-6 py-3 ${
-                    selectedModule === "documents" ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                  onClick={() => setSelectedModule("documents")}
-                >
-                  <FileText
-                    className={`h-5 w-5 ${selectedModule === "documents" ? "text-green-600" : "text-gray-500"}`}
-                  />
-                  <span
-                    className={`text-base font-medium font-quicksand ${
-                      selectedModule === "documents" ? "text-green-600" : "text-gray-800"
-                    }`}
-                  >
-                    Dokumenty księgowe
-                  </span>
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  className={`flex items-center gap-3 px-6 py-3 ${
-                    selectedModule === "reports" ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                  onClick={() => setSelectedModule("reports")}
-                >
-                  <BarChart3
-                    className={`h-5 w-5 ${selectedModule === "reports" ? "text-green-600" : "text-gray-500"}`}
-                  />
-                  <span
-                    className={`text-base font-medium font-quicksand ${
-                      selectedModule === "reports" ? "text-green-600" : "text-gray-800"
-                    }`}
-                  >
-                    Raporty
-                  </span>
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  className={`flex items-center gap-3 px-6 py-3 ${
-                    selectedModule === "payments" ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                  onClick={() => setSelectedModule("payments")}
-                >
-                  <DollarSign
-                    className={`h-5 w-5 ${selectedModule === "payments" ? "text-green-600" : "text-gray-500"}`}
-                  />
-                  <span
-                    className={`text-base font-medium font-quicksand ${
-                      selectedModule === "payments" ? "text-green-600" : "text-gray-800"
-                    }`}
-                  >
-                    Rozrachunki
-                  </span>
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  className={`flex items-center gap-3 px-6 py-3 ${
-                    selectedModule === "dictionaries" ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                  onClick={() => setSelectedModule("dictionaries")}
-                >
-                  <Database
-                    className={`h-5 w-5 ${selectedModule === "dictionaries" ? "text-green-600" : "text-gray-500"}`}
-                  />
-                  <span
-                    className={`text-base font-medium font-quicksand ${
-                      selectedModule === "dictionaries" ? "text-green-600" : "text-gray-800"
-                    }`}
-                  >
-                    Słowniki
-                  </span>
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#"
-                  className={`flex items-center justify-between px-6 py-3 ${
-                    selectedModule === "settings" || isSettingsMenuOpen ? "bg-gray-50" : "hover:bg-gray-50"
-                  }`}
-                  onClick={(e) => {
-                    e.preventDefault()
-                    setIsSettingsMenuOpen(!isSettingsMenuOpen)
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <Settings
-                      className={`h-5 w-5 ${selectedModule === "settings" || isSettingsMenuOpen ? "text-green-600" : "text-gray-500"}`}
-                    />
-                    <span
-                      className={`text-base font-medium font-quicksand ${
-                        selectedModule === "settings" || isSettingsMenuOpen ? "text-green-600" : "text-gray-800"
-                      }`}
-                    >
-                      Ustawienia
-                    </span>
-                  </div>
-                  <ChevronDown
-                    className={`h-5 w-5 ${isSettingsMenuOpen ? "transform rotate-180 text-green-600" : "text-gray-500"}`}
-                  />
-                </a>
-                <ul className={`pl-6 border-l-2 border-gray-200 ml-6 ${isSettingsMenuOpen ? "block" : "hidden"}`}>
-                  <li>
-                    <Link href="/fk/permissions" className="flex items-center gap-3 px-6 py-2 hover:bg-gray-50">
-                      <span className="text-base font-medium text-gray-800 font-quicksand">Uprawnienia</span>
-                    </Link>
-                  </li>
-                  <li>
-                    <a href="#" className="flex items-center gap-3 px-6 py-2 hover:bg-gray-50">
-                      <span className="text-base font-medium font-quicksand text-gray-800">Konfiguracja</span>
-                    </a>
-                  </li>
-                </ul>
-              </li>
-            </ul>
-          </nav>
-        </aside>
+        <AppSidebar 
+          menuItems={menuItems}
+          activeItem={activeItem}
+          onItemClick={(item) => {
+            // Obsługa kliknięć w menu dla działania single-page application
+            if (item.id === "dashboard") setSelectedModule("dashboard")
+            else if (item.id === "documents") setSelectedModule("documents")
+            else if (item.id === "reports") setSelectedModule("reports")
+            else if (item.id === "payments") setSelectedModule("payments")
+            else if (item.id === "dictionaries") setSelectedModule("dictionaries")
+          }}
+        />
 
         {/* Zawartość główna */}
         <main className="flex-1 p-8 bg-gray-50">

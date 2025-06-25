@@ -24,20 +24,7 @@ W **dużych środowiskach enterprise z tysiącami tenantów**, standardowe mecha
 
 ## Architektura
 
-### Komponenty
-
-#### Data Provider API (Port 8110)
-- **Flask** z integracją **PostgreSQL**
-- Implementuje **OPAL External Data Sources** z JWT authentication
-- Dostarcza **per-tenant DataSourceConfig** z single topic i hierarchicznym dst_path
-- Obsługuje **Model 1** (legacy ACL) i **Model 2** (RBAC + REBAC-like)
-- **Database integration** - eliminuje duplikację danych z Provisioning API
-
-#### Provisioning API (Port 8010)
-- **FastAPI** z **PostgreSQL RBAC/REBAC**
-- **Kompletny provisioning tenantów**: Tenant → Firma → Administrator
-- **Automatyczne uprawnienia Portal Administrator** (6 kluczowych uprawnień)
-- **OPAL integration** z single topic multi-tenant publishing
+### Komponenty OPA
 
 #### OPA Standalone (Port 8181)
 - **Policy engine** z hybrydowymi regułami RBAC + REBAC-like
@@ -55,6 +42,22 @@ W **dużych środowiskach enterprise z tysiącami tenantów**, standardowe mecha
 - **JWT-based tenant isolation** z automatycznym data retrieval
 - **Real-time synchronizacja** danych z OPAL Server
 - **Per-tenant DataSourceConfig** processing
+
+### Komponenty warstwy komunikacji ze źródłem danych (Portalem)
+
+#### Data Provider API (Port 8110)
+- **Flask** z integracją **PostgreSQL**
+- Implementuje **OPAL External Data Sources** z JWT authentication
+- Dostarcza **per-tenant DataSourceConfig** z single topic i hierarchicznym dst_path
+- Obsługuje **Model 1** (legacy ACL) i **Model 2** (RBAC + REBAC-like)
+- **Database integration** - eliminuje duplikację danych z Provisioning API
+
+#### Provisioning API (Port 8010)
+- **FastAPI** z **PostgreSQL RBAC/REBAC**
+- **Kompletny provisioning tenantów**: Tenant → Firma → Administrator
+- **Automatyczne uprawnienia Portal Administrator** (6 kluczowych uprawnień)
+- **OPAL integration** z single topic multi-tenant publishing
+
 
 ### Model Uprawnień
 
@@ -273,343 +276,109 @@ sequenceDiagram
 
 ---
 
-## Quick Start
+## 🚀 Quick Start & Deployment
 
-### 1. Instalacja Docker
+Gotowy do uruchomienia? Mamy dla Ciebie kompletne przewodniki deployment:
 
-Uruchom środowisko Docker:
+### **🎯 [Szybki Start (5 minut)](docs/QUICK_START.md)**
+Uruchom kompletny stack w 4 krokach:
 ```bash
-cd new-architecture
-docker-compose up -d
+git clone <repository-url> && cd opa_zero_poll
+./scripts/setup.sh --with-portal
+./scripts/verify.sh --test-tenant  
+curl http://localhost:3000
 ```
 
-### 2. Sprawdzenie statusu serwisów
+### **📚 [Kompletny Przewodnik Deployment](docs/DEPLOYMENT.md)**
+Szczegółowa dokumentacja obejmująca:
+- Multi-platform setup (macOS/Linux/Windows)
+- Environment configuration & security
+- Production deployment guidelines
+- Monitoring & troubleshooting
+- Performance optimization
 
-Sprawdź czy wszystkie serwisy są uruchomione:
+### **🛠️ Automatyczne Skrypty Setup**
+- `./scripts/setup.sh` - Automatyczny setup z wykrywaniem platformy
+- `./scripts/verify.sh` - Kompletna weryfikacja systemu
+- `./scripts/platform-detect.sh` - Detekcja i konfiguracja platformy
+- `./scripts/restart.sh` - Inteligentny restart serwisów
+
+**Wymagania:** Docker Desktop, 8GB RAM, porty 3000, 8010, 8110, 8181, 7000-7002
+
+**Support:** macOS (Intel/Apple Silicon), Linux (Ubuntu/RHEL), Windows (WSL2)
+
+---
+
+## 🧪 Testowanie & Weryfikacja
+
+Kompletne scenariusze testowe i diagnostyka:
+
+### **End-to-End Testy**
+- [Scenariusze End-to-End](docs/END_TO_END_SCENARIOS.md) - Pełne przepływy pracy z komendami CURL, monitoringiem logów i diagnostyką
+- [Testy Permission Event Translator](docs/PERMISSION_EVENT_TRANSLATOR_TESTS.md) - Szczegółowe testy systemu notyfikacji
+
+### **Automatyczne Testy**
 ```bash
-# Health checks wszystkich komponentów
-curl http://localhost:8110/health  # Data Provider API
-curl http://localhost:8010/health  # Provisioning API  
-curl http://localhost:8181/health  # OPA
-curl http://localhost:7002/healthcheck  # OPAL Server
-curl http://localhost:7000/healthcheck  # OPAL Client
+# Test kompletnego provisioning tenanta
+cd new-architecture && python test_complete_tenant_provisioning_v2.py
 
-# Status kontenerów
-docker-compose ps
+# Testy komponentów
+cd new-architecture/components/data-provider-api && python -m pytest tests/ -v
+
+# Weryfikacja systemu
+./scripts/verify.sh --detailed --test-tenant
 ```
 
-### 3. Wywołania API startowe
-
-Sprawdź jakie dane mają serwisy na start:
-
+### **Quick Test - Single Tenant**
 ```bash
-# Data Provider API - lista tenantów (PostgreSQL)
-curl http://localhost:8110/tenants
+# 1. Uruchom stack
+./scripts/setup.sh
 
-# Provisioning API - lista tenantów (PostgreSQL)  
-curl http://localhost:8010/tenants
-
-# OPA - sprawdź czy są jakieś dane (powinno być puste na start)
-curl http://localhost:8181/v1/data/acl
-```
-
-**Oczekiwany rezultat**: Serwisy działają, ale **brak danych tenantów** na początku.
-
-### 4. Sekwencja rejestracji tenanta
-
-Wykonaj kompletny provisioning nowego tenanta:
-
-```bash
-# Provisioning kompletnej struktury tenanta (v2.0.0)
+# 2. Utwórz test tenant
 curl -X POST http://localhost:8010/provision-tenant \
   -H "Content-Type: application/json" \
-  -d '{
-    "tenant_id": "demo_tenant_123", 
-    "tenant_name": "Demo Company Ltd",
-    "admin_email": "admin@democompany.com",
-    "admin_name": "Jan Kowalski"
-  }'
-```
+  -d '{"tenant_id": "test_123", "tenant_name": "Test Company", "admin_email": "admin@test.com", "admin_name": "Admin User"}'
 
-**Oczekiwany rezultat**: Status 201 z kompletną strukturą tenanta.
-
-### 5. Sprawdzenie logów serwera
-
-Sprawdź w logach OPAL Server czy jest broadcast:
-```bash
-# Logi OPAL Server - szukaj "multi_tenant_data" topic
-docker-compose logs opal-server | grep -i "multi_tenant_data\|broadcast\|publish"
-
-# Logi OPAL Client - szukaj otrzymanych eventów
-docker-compose logs opal-client | grep -i "data.*config\|fetch\|update"
-```
-
-**Oczekiwany rezultat**: 
-- OPAL Server: broadcast event z topic `multi_tenant_data`
-- OPAL Client: otrzymany event i wykonane żądanie do Data Provider API
-
-### 6. Finalne sprawdzenie danych w OPA
-
-Sprawdź czy dane tenanta są dostępne w OPA:
-
-```bash
-# Sprawdź dane tenanta w OPA
-curl http://localhost:8181/v1/data/acl/demo_tenant_123
-
-# Sprawdź listę wszystkich tenantów w OPA
-curl http://localhost:8181/v1/data/acl
-
-# Test autoryzacji dla nowego tenanta
+# 3. Test autoryzacji
 curl "http://localhost:8181/v1/data/rbac/allow" \
   -H "Content-Type: application/json" \
-  -d '{
-    "input": {
-      "user": "admin_demo_tenant_123", 
-      "action": "manage_users", 
-      "resource": "portal", 
-      "tenant": "demo_tenant_123"
-    }
-  }'
-```
-
-**Oczekiwany rezultat**: 
-- Dane tenanta dostępne w OPA pod `/acl/demo_tenant_123`
-- Administrator ma uprawnienia Portal (6 uprawnień)
-- Autoryzacja zwraca `{"result": true}` dla administratora
-
----
-
-## Testy Jednostkowe
-
-### Test kompletnego provisioning tenanta
-```bash
-# Zainstaluj zależności Python (jeśli potrzebne)
-pip install psycopg2-binary requests
-
-# Test provisioning API v2.0.0 z PostgreSQL
-cd new-architecture
-python test_complete_tenant_provisioning_v2.py
-```
-
-**Co testuje:**
-- ✅ Provisioning API - kompletna struktura tenanta w PostgreSQL
-- ✅ Data Provider API - synchronizacja z PostgreSQL  
-- ✅ OPAL Server - data update event
-- ✅ OPAL Client - fetch i load danych
-- ✅ OPA - dane dostępne dla autoryzacji
-- ✅ Administrator z uprawnieniami Portal (6 uprawnień)
-
-### Testy komponentów
-```bash
-# Data Provider API
-cd new-architecture/components/data-provider-api
-python -m pytest tests/ -v
-
-# Testy systemu
-cd new-architecture/tests  
-python test_full_system.py
-```
-
-### Test autoryzacji
-```bash
-# Model 1 (legacy ACL)
-curl "http://localhost:8181/v1/data/rbac/allow" \
-  -H "Content-Type: application/json" \
-  -d '{"input": {"user": "user1", "action": "read", "resource": "document1", "tenant": "tenant1"}}'
-
-# Model 2 (hybrid RBAC + REBAC)
-curl "http://localhost:8110/v2/users/user42/permissions?app=fk&action=view_entry&company_id=company1&tenant_id=tenant125"
-
-# KSEF Policy Test (z rzeczywistymi danymi)
-curl -X POST http://localhost:8181/v1/data/ksef/allow \
-  -H "Content-Type: application/json" \
-  -d '{"input": {"user": "user_1750141671", "tenant": "tenant1", "action": "view_invoices_purchase"}}'
-```
-
-### Kompletne Testowanie End-to-End
-
-Kompletne scenariusze testowe obejmujące tworzenie tenantów, zarządzanie użytkownikami i propagację danych do OPA:
-- [Scenariusze End-to-End](docs/END_TO_END_SCENARIOS.md) - Pełne przepływy pracy z komendami CURL, monitoringiem logów i diagnostyką
-
-### Testy Konkretnych Funkcjonalności
-- [Testy Permission Event Translator](docs/PERMISSION_EVENT_TRANSLATOR_TESTS.md) - Szczegółowe testy systemu notyfikacji Permission Event Translator
-
----
-
-## Troubleshooting
-
-### Instalacja Docker na różnych systemach
-
-#### macOS (Apple Silicon M1/M2)
-
-**Wymagania**: Docker Desktop z Apple Silicon support
-
-**Potencjalne problemy**:
-1. Sprawdź czy Docker Desktop ma włączone "Use Rosetta for x86/amd64 emulation"
-2. Jeśli problemy z budowaniem, wymuś rebuild: `docker-compose build --no-cache`
-
-#### macOS (Intel)
-
-**Zmiana wymagana**: Zamień `platform: linux/arm64` na `platform: linux/amd64` w `docker-compose.yml`:
-
-```yaml
-services:
-  data-provider-api:
-    platform: linux/amd64  # ← Zmień z arm64 na amd64
-```
-
-#### Windows
-
-**Wymagania**:
-- Docker Desktop z WSL2
-- Git for Windows lub WSL2 Ubuntu
-
-**Zmiany w docker-compose.yml**:
-```yaml
-services:
-  data-provider-api:
-    platform: linux/amd64  # ← Użyj amd64 na Windows
-```
-
-**Potencjalne problemy**:
-- **Mapowanie portów**: Sprawdź czy porty 8000, 8010, 8110, 8181, 7001, 7002 nie są zajęte
-- **Ścieżki**: Używaj forward slashy (`/`) zamiast backslash (`\`) w ścieżkach
-
-#### Linux (Ubuntu/Debian/RHEL)
-
-**Zmiany w docker-compose.yml**:
-```yaml
-services:
-  data-provider-api:
-    platform: linux/amd64  # ← Usuń lub zmień na amd64
-```
-
-**Dodatkowe zależności**:
-```bash
-# Ubuntu/Debian
-sudo apt update && sudo apt install docker.io docker-compose-plugin
-
-# RHEL/CentOS/Fedora  
-sudo dnf install docker docker-compose
-```
-
-### Instalacja zależności Python dla testów
-
-```bash
-# Podstawowe zależności dla testów
-pip install psycopg2-binary requests
-
-# Jeśli problemy z psycopg2 na macOS:
-brew install postgresql
-pip install psycopg2
-
-# Jeśli problemy z psycopg2 na Ubuntu/Debian:
-sudo apt-get install python3-dev libpq-dev
-pip install psycopg2
-
-# Alternatywnie - użyj psycopg2-binary:
-pip install psycopg2-binary
-```
-
-### Sprawdzenie konfiguracji
-
-Po dostosowaniu platformy, sprawdź czy wszystko działa:
-
-```bash
-# 1. Restart wszystkich kontenerów
-docker-compose down
-docker-compose up --build -d
-
-# 2. Sprawdź status
-docker-compose ps
-
-# 3. Test health checków
-curl http://localhost:8110/health
-curl http://localhost:8010/health
-curl http://localhost:8181/health
-curl http://localhost:7002/healthcheck
-curl http://localhost:7000/healthcheck
-```
-
-### Częste problemy
-
-#### Problem z portami
-```bash
-# Sprawdź zajęte porty
-netstat -tulpn | grep :8110
-# lub na macOS
-lsof -i :8110
-
-# Zmień porty w docker-compose.yml jeśli zajęte:
-ports:
-  - "8111:8110"  # Użyj innego portu zewnętrznego
-```
-
-#### Problem z pamięcią
-```bash
-# Zwiększ zasoby Docker Desktop:
-# Settings → Resources → Advanced
-# RAM: minimum 4GB, zalecane 8GB
-# Swap: minimum 2GB
-```
-
-#### Problem z logami
-```bash
-# Sprawdź logi konkretnego serwisu
-docker-compose logs data-provider-api
-docker-compose logs opal-server
-
-# Sprawdź logi na żywo
-docker-compose logs -f
-
-# Sprawdź logi z ostatnich 100 linii
-docker-compose logs --tail=100
-```
-
-#### Problem z bazą danych PostgreSQL
-```bash
-# Sprawdź status bazy danych
-docker-compose logs postgres-db
-
-# Test połączenia z bazą
-docker-compose exec postgres-db psql -U opa_user -d opa_zero_poll -c "SELECT 1;"
-
-# Reset bazy danych (UWAGA: usuwa wszystkie dane)
-docker-compose down -v
-docker-compose up -d
+  -d '{"input": {"user": "admin_test_123", "action": "manage_users", "resource": "portal", "tenant": "test_123"}}'
 ```
 
 ---
 
-## Struktura Projektu
+## 📁 Struktura Projektu
 
 ```
-new-architecture/
-├── components/
-│   ├── data-provider-api/     # OPAL External Data Sources + Model 2
-│   ├── provisioning-api/      # Tenant management (PostgreSQL)
-│   ├── opa-standalone/        # Policy engine
-│   ├── opal-server/          # Policy & data orchestration
-│   └── opal-client/          # Data synchronization
-├── docs/                     # Dokumentacja architektury
-├── test_complete_tenant_provisioning_v2.py  # Test end-to-end
-└── docker-compose.yml       # Orchestration
+opa_zero_poll/
+├── new-architecture/          # Backend components
+│   ├── components/
+│   │   ├── data-provider-api/     # OPAL External Data Sources + Model 2
+│   │   ├── provisioning-api/      # Tenant management (PostgreSQL)
+│   │   ├── opa-standalone/        # Policy engine
+│   │   ├── opal-server/          # Policy & data orchestration
+│   │   └── opal-client/          # Data synchronization
+│   └── database/              # PostgreSQL schema & migrations
+├── app/                       # Next.js Portal UI (Port 3000)
+├── docs/                      # 📚 Kompletna dokumentacja
+├── scripts/                   # 🛠️ Automatyczne skrypty setup/verify
+├── docker-compose.yml         # 🐳 Orchestration config
+└── env.template              # ⚙️ Environment configuration template
 ```
 
-## Konfiguracja
+## ⚙️ Konfiguracja
 
-### Zmienne środowiskowe:
+**Szczegółowa konfiguracja:** Zobacz [Przewodnik Deployment](docs/DEPLOYMENT.md) dla kompletnych instrukcji environment.
+
+**Quick Config:**
 ```bash
-# URLs (opcjonalne)
-OPA_URL=http://opa-standalone:8181
-PROVISIONING_API_URL=http://provisioning-api:8010
-OPAL_SERVER_URL=http://opal-server:7002
-DATA_PROVIDER_API_URL=http://data-provider-api:8110
+# 1. Automatyczna detekcja platformy
+./scripts/platform-detect.sh
 
-# PostgreSQL (konfigurowane w docker-compose.yml)
-DB_HOST=postgres-db
-DB_PORT=5432
-DB_NAME=opa_zero_poll
-DB_USER=opa_user
-DB_PASSWORD=opa_password
+# 2. Setup environment  
+cp env.template .env
+# (edytuj .env według potrzeb)
+
+# 3. Uruchomienie
+./scripts/setup.sh --with-portal
 ```

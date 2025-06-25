@@ -1,10 +1,5 @@
 {
   "pages": {
-    "/api/profiles/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/profiles/route.js"
-    ],
     "/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -15,6 +10,21 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/loading.js"
+    ],
+    "/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/page.js"
+    ],
+    "/aplikacje/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/aplikacje/loading.js"
+    ],
+    "/aplikacje/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/aplikacje/page.js"
     ],
     "/users/loading": [
       "static/chunks/webpack.js",
@@ -46,10 +56,130 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/users/[userId]/companies/route.js"
     ],
+    "/api/users/[userId]/teams/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/users/[userId]/teams/route.js"
+    ],
+    "/api/teams/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/teams/route.js"
+    ],
+    "/api/teams/[teamId]/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/teams/[teamId]/route.js"
+    ],
+    "/api/teams/[teamId]/members/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/teams/[teamId]/members/route.js"
+    ],
+    "/ustawienia/zespoly/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ustawienia/zespoly/page.js"
+    ],
+    "/ustawienia/zespoly/[teamId]/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ustawienia/zespoly/[teamId]/page.js"
+    ],
+    "/api/teams/[teamId]/applications/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/teams/[teamId]/applications/route.js"
+    ],
+    "/api/teams/[teamId]/companies/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/teams/[teamId]/companies/route.js"
+    ],
+    "/api/profiles/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/profiles/route.js"
+    ],
     "/api/companies/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/companies/route.js"
+    ],
+    "/ksef/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ksef/loading.js"
+    ],
+    "/ksef/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ksef/page.js"
+    ],
+    "/api/opa/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/opa/route.js"
+    ],
+    "/ksef/permissions/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ksef/permissions/loading.js"
+    ],
+    "/ksef/permissions/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/ksef/permissions/page.js"
+    ],
+    "/firmy/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/firmy/loading.js"
+    ],
+    "/firmy/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/firmy/page.js"
+    ],
+    "/portal-settings/layout": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/portal-settings/layout.js"
+    ],
+    "/portal-settings/tenant-management/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/portal-settings/tenant-management/page.js"
+    ],
+    "/portal-settings/uruchomienie/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/portal-settings/uruchomienie/page.js"
+    ],
+    "/policy-management/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/policy-management/page.js"
+    ],
+    "/api/opa/health/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/opa/health/route.js"
+    ],
+    "/edokumenty/loading": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/edokumenty/loading.js"
+    ],
+    "/edokumenty/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/edokumenty/page.js"
+    ],
+    "/api/users/[userId]/application-access/[profileId]/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/users/[userId]/application-access/[profileId]/route.js"
     ]
   }
 }

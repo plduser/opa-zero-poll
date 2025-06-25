@@ -1,21 +1,26 @@
 {
   "openapi": "3.0.3",
   "info": {
-    "title": "Data Provider API",
-    "description": "Multi-tenant ACL data provider dla OPA z integracją bazy danych PostgreSQL. Obsługuje Enhanced Model 1 (RBAC), zarządzanie użytkownikami, firmami, profilami aplikacji oraz integrację z OPAL External Data Sources.",
-    "version": "3.1.0",
+    "title": "Portal Symfonia - Data Provider API",
+    "description": "Multi-tenant ACL data provider dla OPA z integracją bazy danych PostgreSQL. Obsługuje Enhanced Model 1 (RBAC), zarządzanie użytkownikami, firmami, profilami aplikacji, zespołami oraz integrację z OPAL External Data Sources. **ZAKTUALIZOWANO w v3.2.0**: Dodano kompletne endpointy dla zespołów.",
+    "version": "3.2.0",
     "contact": {
-      "name": "Portal Symfonia Team"
+      "name": "Portal Symfonia Team",
+      "email": "dev@portalsymfonia.pl"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
     }
   },
   "servers": [
     {
       "url": "http://localhost:8110",
-      "description": "Development server"
+      "description": "Development server (lokalny)"
     },
     {
       "url": "http://data-provider-api:8110",
-      "description": "Docker container"
+      "description": "Docker container (wewnętrzny)"
     }
   ],
   "paths": {
@@ -25,23 +30,7 @@
         "description": "Zwraca podstawowe informacje o serwisie Data Provider API",
         "tags": ["System"],
         "responses": {
-          "200": {
-            "description": "Informacje o serwisie",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "service": {"type": "string"},
-                    "version": {"type": "string"},
-                    "description": {"type": "string"},
-                    "database_integration": {"type": "boolean"},
-                    "timestamp": {"type": "string", "format": "date-time"}
-                  }
-                }
-              }
-            }
-          }
+          "200": {"description": "Informacje o serwisie"}
         }
       }
     },
@@ -51,9 +40,28 @@
         "description": "Sprawdza stan zdrowia serwisu i dostępność bazy danych",
         "tags": ["System"],
         "responses": {
-          "200": {
-            "description": "Serwis działa poprawnie"
-          }
+          "200": {"description": "Serwis działa poprawnie"}
+        }
+      }
+    },
+    "/docs": {
+      "get": {
+        "summary": "Swagger UI",
+        "description": "Interfejs dokumentacji API",
+        "tags": ["System"],
+        "responses": {
+          "200": {"description": "Strona dokumentacji HTML"}
+        }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "summary": "Specyfikacja OpenAPI",
+        "description": "Zwraca pełną specyfikację OpenAPI w formacie JSON",
+        "tags": ["System"],
+        "responses": {
+          "200": {"description": "Specyfikacja OpenAPI"},
+          "404": {"description": "Plik specyfikacji nie został znaleziony"}
         }
       }
     },
@@ -63,9 +71,8 @@
         "description": "Zwraca listę wszystkich dostępnych tenantów w systemie",
         "tags": ["Tenants"],
         "responses": {
-          "200": {
-            "description": "Lista tenantów"
-          }
+          "200": {"description": "Lista tenantów"},
+          "503": {"description": "Baza danych niedostępna"}
         }
       }
     },
@@ -84,33 +91,50 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Dane ACL tenanta"
-          },
-          "404": {
-            "description": "Tenant nie został znaleziony"
-          }
+          "200": {"description": "Dane ACL tenanta"},
+          "404": {"description": "Tenant nie został znaleziony"},
+          "503": {"description": "Baza danych niedostępna"}
         }
       }
     },
     "/api/users": {
       "get": {
         "summary": "Lista użytkowników",
-        "description": "Zwraca listę wszystkich użytkowników w systemie",
+        "description": "Zwraca listę użytkowników z opcjonalnym filtrowaniem",
         "tags": ["Users"],
+        "parameters": [
+          {"name": "tenant_id", "in": "query", "schema": {"type": "string"}},
+          {"name": "status", "in": "query", "schema": {"type": "string", "default": "active"}}
+        ],
         "responses": {
-          "200": {
-            "description": "Lista użytkowników"
-          }
+          "200": {"description": "Lista użytkowników"}
         }
       },
       "post": {
         "summary": "Utworz nowego użytkownika",
+        "description": "Tworzy nowego użytkownika w systemie",
         "tags": ["Users"],
-        "responses": {
-          "201": {
-            "description": "Użytkownik utworzony pomyślnie"
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tenant_id", "username", "email"],
+                "properties": {
+                  "tenant_id": {"type": "string"},
+                  "username": {"type": "string"},
+                  "email": {"type": "string", "format": "email"},
+                  "first_name": {"type": "string"},
+                  "last_name": {"type": "string"},
+                  "status": {"type": "string", "default": "active"}
+                }
+              }
+            }
           }
+        },
+        "responses": {
+          "201": {"description": "Użytkownik utworzony pomyślnie"}
         }
       }
     },
@@ -118,141 +142,164 @@
       "get": {
         "summary": "Szczegóły użytkownika",
         "tags": ["Users"],
-        "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"}
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Szczegóły użytkownika"
-          }
-        }
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Szczegóły użytkownika"}, "404": {"description": "Użytkownik nie znaleziony"}}
       },
       "delete": {
         "summary": "Usuń użytkownika",
         "tags": ["Users"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Użytkownik usunięty pomyślnie"}}
+      }
+    },
+    "/api/users/{user_id}/roles": {
+      "get": {
+        "summary": "Role użytkownika",
+        "tags": ["Users", "Roles"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista ról użytkownika"}}
+      },
+      "post": {
+        "summary": "Przypisz rolę użytkownikowi",
+        "tags": ["Users", "Roles"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["profile_id"],
+                "properties": {"profile_id": {"type": "string"}}
+              }
+            }
+          }
+        },
+        "responses": {"201": {"description": "Rola przypisana pomyślnie"}}
+      }
+    },
+    "/api/users/{user_id}/roles/{profile_id}": {
+      "delete": {
+        "summary": "Usuń rolę użytkownika",
+        "tags": ["Users", "Roles"],
         "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"}
-          }
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "profile_id", "in": "path", "required": true, "schema": {"type": "string"}}
         ],
-        "responses": {
-          "200": {
-            "description": "Użytkownik usunięty pomyślnie"
-          }
-        }
+        "responses": {"200": {"description": "Rola usunięta pomyślnie"}}
       }
     },
-    "/data/config": {
+    "/api/users/for-portal": {
       "get": {
-        "summary": "OPAL External Data Sources Config",
-        "description": "Zwraca konfigurację data sources dla OPAL Client na podstawie JWT token",
-        "tags": ["OPAL"],
+        "summary": "Użytkownicy dla portalu",
+        "description": "Zwraca listę użytkowników w formacie przygotowanym dla portalu",
+        "tags": ["Users", "Portal"],
+        "responses": {"200": {"description": "Lista użytkowników dla portalu"}}
+      }
+    },
+    "/api/applications": {
+      "get": {
+        "summary": "Lista aplikacji",
+        "description": "Zwraca listę dostępnych aplikacji w systemie",
+        "tags": ["Applications"],
+        "responses": {"200": {"description": "Lista aplikacji"}}
+      }
+    },
+    "/api/users/{user_id}/application-access": {
+      "get": {
+        "summary": "Dostęp użytkownika do aplikacji",
+        "tags": ["User Access", "Profiles"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista profili użytkownika"}}
+      },
+      "post": {
+        "summary": "Przypisz profil aplikacji",
+        "tags": ["User Access", "Profiles"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["profile_id"],
+                "properties": {"profile_id": {"type": "string"}}
+              }
+            }
+          }
+        },
+        "responses": {"201": {"description": "Profil przypisany pomyślnie"}}
+      }
+    },
+    "/api/users/{user_id}/application-access/{profile_id}": {
+      "delete": {
+        "summary": "Usuń dostęp do aplikacji",
+        "tags": ["User Access", "Profiles"],
         "parameters": [
-          {
-            "name": "token",
-            "in": "query",
-            "required": true,
-            "schema": {"type": "string"},
-            "description": "OPAL Client JWT token"
-          }
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "profile_id", "in": "path", "required": true, "schema": {"type": "string"}}
         ],
-        "responses": {
-          "200": {
-            "description": "Konfiguracja data sources"
-          },
-          "401": {
-            "description": "Nieprawidłowy lub brakujący token"
-          }
-        }
+        "responses": {"200": {"description": "Dostęp usunięty pomyślnie"}}
       }
     },
-    "/data/tenants-bootstrap": {
+    "/api/users/{user_id}/companies": {
       "get": {
-        "summary": "Tenant Discovery API (Bootstrap)",
-        "description": "Zwraca konfigurację data sources dla wszystkich tenantów - do bootstrap'owania OPAL Server",
-        "tags": ["OPAL", "Tenants", "Bootstrap"],
-        "responses": {
-          "200": {
-            "description": "Konfiguracja data sources dla wszystkich tenantów"
+        "summary": "Dostęp użytkownika do firm",
+        "tags": ["User Access", "Companies"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista firm z dostępem"}}
+      },
+      "post": {
+        "summary": "Przyznaj dostęp do firmy",
+        "tags": ["User Access", "Companies"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["company_id", "access_type"],
+                "properties": {
+                  "company_id": {"type": "string"},
+                  "access_type": {"type": "string", "enum": ["view", "edit", "manage", "admin"]}
+                }
+              }
+            }
           }
-        }
+        },
+        "responses": {"201": {"description": "Dostęp przyznany pomyślnie"}}
       }
     },
-    "/opal/health": {
-      "get": {
-        "summary": "OPAL Integration Health Check",
-        "description": "Sprawdza gotowość integracji OPAL External Data Sources",
-        "tags": ["OPAL", "System"],
-        "responses": {
-          "200": {
-            "description": "OPAL integration jest gotowa"
-          },
-          "503": {
-            "description": "OPAL integration nie jest gotowa"
-          }
-        }
-      }
-    },
-    "/debug/user_access/{user_id}/{tenant_id}": {
-      "get": {
-        "summary": "Debug dostępów użytkownika",
-        "description": "Endpoint debugowy do sprawdzania dostępów użytkownika w kontekście tenanta",
-        "tags": ["Debug", "Users"],
+    "/api/users/{user_id}/companies/{company_id}": {
+      "delete": {
+        "summary": "Usuń dostęp do firmy",
+        "tags": ["User Access", "Companies"],
         "parameters": [
-          {
-            "name": "user_id",
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"},
-            "description": "Identyfikator użytkownika"
-          },
-          {
-            "name": "tenant_id", 
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"},
-            "description": "Identyfikator tenanta"
-          }
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "company_id", "in": "path", "required": true, "schema": {"type": "string"}}
         ],
-        "responses": {
-          "200": {
-            "description": "Informacje debugowe o dostępach użytkownika"
-          }
-        }
+        "responses": {"200": {"description": "Dostęp usunięty pomyślnie"}}
+      }
+    },
+    "/api/users/{user_id}/sync-profiles": {
+      "post": {
+        "summary": "Synchronizuj profile użytkownika",
+        "tags": ["User Access", "Sync"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Profile zsynchronizowane pomyślnie"}}
       }
     },
     "/api/companies": {
       "get": {
         "summary": "Lista firm",
-        "description": "Zwraca listę firm z opcjonalnym filtrowaniem po tenant_id i statusie",
+        "description": "Zwraca listę firm z opcjonalnym filtrowaniem",
         "tags": ["Companies"],
         "parameters": [
-          {
-            "name": "tenant_id",
-            "in": "query",
-            "schema": {"type": "string"},
-            "description": "Filtruj po tenant_id"
-          },
-          {
-            "name": "status",
-            "in": "query",
-            "schema": {"type": "string", "default": "active"},
-            "description": "Filtruj po statusie firmy"
-          }
+          {"name": "tenant_id", "in": "query", "schema": {"type": "string"}},
+          {"name": "status", "in": "query", "schema": {"type": "string", "default": "active"}}
         ],
-        "responses": {
-          "200": {
-            "description": "Lista firm"
-          }
-        }
+        "responses": {"200": {"description": "Lista firm"}}
       },
       "post": {
         "summary": "Utworz firmę",
@@ -278,64 +325,392 @@
             }
           }
         },
-        "responses": {
-          "201": {
-            "description": "Firma utworzona pomyślnie"
-          }
-        }
+        "responses": {"201": {"description": "Firma utworzona pomyślnie"}}
       }
     },
     "/api/companies/{company_id}": {
       "get": {
         "summary": "Szczegóły firmy",
-        "description": "Zwraca szczegóły firmy wraz z listą użytkowników",
         "tags": ["Companies"],
-        "parameters": [
-          {
-            "name": "company_id",
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"}
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Szczegóły firmy"
-          }
-        }
+        "parameters": [{"name": "company_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Szczegóły firmy"}}
       },
       "put": {
         "summary": "Zaktualizuj firmę",
         "tags": ["Companies"],
-        "parameters": [
-          {
-            "name": "company_id",
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"}
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Firma zaktualizowana pomyślnie"
-          }
-        }
+        "parameters": [{"name": "company_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Firma zaktualizowana pomyślnie"}}
       },
       "delete": {
         "summary": "Usuń firmę",
         "tags": ["Companies"],
+        "parameters": [{"name": "company_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Firma usunięta pomyślnie"}}
+      }
+    },
+    "/api/companies/{company_id}/users": {
+      "get": {
+        "summary": "Użytkownicy firmy",
+        "tags": ["Companies", "User Access"],
+        "parameters": [{"name": "company_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista użytkowników firmy"}}
+      }
+    },
+    "/api/companies/{company_id}/users/{user_id}": {
+      "post": {
+        "summary": "Przyznaj dostęp użytkownikowi do firmy",
+        "tags": ["Companies", "User Access"],
         "parameters": [
-          {
-            "name": "company_id",
-            "in": "path",
-            "required": true,
-            "schema": {"type": "string"}
+          {"name": "company_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["access_type"],
+                "properties": {"access_type": {"type": "string", "enum": ["view", "edit", "manage", "admin"]}}
+              }
+            }
           }
+        },
+        "responses": {"201": {"description": "Dostęp przyznany pomyślnie"}}
+      },
+      "delete": {
+        "summary": "Usuń dostęp użytkownika do firmy",
+        "tags": ["Companies", "User Access"],
+        "parameters": [
+          {"name": "company_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Dostęp usunięty pomyślnie"}}
+      }
+    },
+    "/api/teams": {
+      "get": {
+        "summary": "Lista zespołów",
+        "description": "Zwraca listę zespołów z opcjonalnym filtrowaniem. **NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams"],
+        "parameters": [
+          {"name": "tenant_id", "in": "query", "schema": {"type": "string"}},
+          {"name": "team_type", "in": "query", "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Lista zespołów"}}
+      },
+      "post": {
+        "summary": "Utworz zespół",
+        "description": "Tworzy nowy zespół w systemie. **NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["tenant_id", "team_name", "team_type"],
+                "properties": {
+                  "tenant_id": {"type": "string"},
+                  "team_name": {"type": "string"},
+                  "team_type": {"type": "string", "enum": ["functional", "department", "project", "external"]},
+                  "description": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {"201": {"description": "Zespół utworzony pomyślnie"}}
+      }
+    },
+    "/api/teams/{team_id}": {
+      "get": {
+        "summary": "Szczegóły zespołu",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Szczegóły zespołu"}}
+      },
+      "put": {
+        "summary": "Zaktualizuj zespół",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Zespół zaktualizowany pomyślnie"}}
+      },
+      "delete": {
+        "summary": "Usuń zespół",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Zespół usunięty pomyślnie"}}
+      }
+    },
+    "/api/teams/{team_id}/members": {
+      "get": {
+        "summary": "Członkowie zespołu",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Members"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista członków zespołu"}}
+      },
+      "post": {
+        "summary": "Dodaj członka do zespołu",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Members"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["user_id", "role"],
+                "properties": {
+                  "user_id": {"type": "string"},
+                  "role": {"type": "string", "enum": ["member", "lead", "admin"]}
+                }
+              }
+            }
+          }
+        },
+        "responses": {"201": {"description": "Członek dodany pomyślnie"}}
+      }
+    },
+    "/api/teams/{team_id}/members/{user_id}": {
+      "put": {
+        "summary": "Zaktualizuj rolę członka",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Members"],
+        "parameters": [
+          {"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["role"],
+                "properties": {"role": {"type": "string", "enum": ["member", "lead", "admin"]}}
+              }
+            }
+          }
+        },
+        "responses": {"200": {"description": "Rola zaktualizowana pomyślnie"}}
+      },
+      "delete": {
+        "summary": "Usuń członka z zespołu",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Members"],
+        "parameters": [
+          {"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Członek usunięty pomyślnie"}}
+      }
+    },
+    "/api/users/{user_id}/teams": {
+      "get": {
+        "summary": "Zespoły użytkownika",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Users"],
+        "parameters": [{"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista zespołów użytkownika"}}
+      }
+    },
+    "/api/teams/{team_id}/applications": {
+      "get": {
+        "summary": "Dostęp zespołu do aplikacji",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Applications"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista aplikacji zespołu"}}
+      },
+      "post": {
+        "summary": "Przyznaj zespołowi dostęp do aplikacji",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Applications"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["application_id", "role"],
+                "properties": {
+                  "application_id": {"type": "string"},
+                  "role": {"type": "string"}
+                }
+              }
+            }
+          }
+        },
+        "responses": {"201": {"description": "Dostęp przyznany pomyślnie"}}
+      },
+      "delete": {
+        "summary": "Usuń dostęp zespołu do aplikacji",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Applications"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Dostęp usunięty pomyślnie"}}
+      }
+    },
+    "/api/teams/{team_id}/companies": {
+      "get": {
+        "summary": "Dostęp zespołu do firm",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Companies"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista firm zespołu"}}
+      },
+      "post": {
+        "summary": "Przyznaj zespołowi dostęp do firmy",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Companies"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["company_id", "access_type"],
+                "properties": {
+                  "company_id": {"type": "string"},
+                  "access_type": {"type": "string", "enum": ["view", "edit", "manage", "admin"]}
+                }
+              }
+            }
+          }
+        },
+        "responses": {"201": {"description": "Dostęp przyznany pomyślnie"}}
+      },
+      "delete": {
+        "summary": "Usuń dostęp zespołu do firm",
+        "description": "**NOWY ENDPOINT w v3.2.0**",
+        "tags": ["Teams", "Companies"],
+        "parameters": [{"name": "team_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Dostęp usunięty pomyślnie"}}
+      }
+    },
+    "/api/profiles": {
+      "get": {
+        "summary": "Lista profili aplikacji",
+        "tags": ["Profiles"],
+        "responses": {"200": {"description": "Lista profili"}}
+      },
+      "post": {
+        "summary": "Utworz profil aplikacji",
+        "tags": ["Profiles"],
+        "responses": {"201": {"description": "Profil utworzony pomyślnie"}}
+      }
+    },
+    "/api/profiles/{profile_id}": {
+      "get": {
+        "summary": "Szczegóły profilu",
+        "tags": ["Profiles"],
+        "parameters": [{"name": "profile_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Szczegóły profilu"}}
+      },
+      "put": {
+        "summary": "Zaktualizuj profil",
+        "tags": ["Profiles"],
+        "parameters": [{"name": "profile_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Profil zaktualizowany pomyślnie"}}
+      },
+      "delete": {
+        "summary": "Usuń profil",
+        "tags": ["Profiles"],
+        "parameters": [{"name": "profile_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Profil usunięty pomyślnie"}}
+      }
+    },
+    "/api/profiles/{profile_id}/role-mappings": {
+      "get": {
+        "summary": "Mapowania ról profilu",
+        "tags": ["Profiles", "Roles"],
+        "parameters": [{"name": "profile_id", "in": "path", "required": true, "schema": {"type": "string"}}],
+        "responses": {"200": {"description": "Lista mapowań ról"}}
+      }
+    },
+    "/data/config": {
+      "get": {
+        "summary": "OPAL External Data Sources Config",
+        "description": "Zwraca konfigurację data sources dla OPAL Client na podstawie JWT token",
+        "tags": ["OPAL"],
+        "parameters": [
+          {"name": "token", "in": "query", "required": true, "schema": {"type": "string"}, "description": "OPAL Client JWT token"}
         ],
         "responses": {
-          "200": {
-            "description": "Firma usunięta pomyślnie"
-          }
+          "200": {"description": "Konfiguracja data sources"},
+          "401": {"description": "Nieprawidłowy lub brakujący token"}
+        }
+      }
+    },
+    "/data/tenants-bootstrap": {
+      "get": {
+        "summary": "Tenant Discovery API (Bootstrap)",
+        "description": "Zwraca konfigurację data sources dla wszystkich tenantów - do bootstrap'owania OPAL Server",
+        "tags": ["OPAL", "Tenants", "Bootstrap"],
+        "responses": {"200": {"description": "Konfiguracja data sources dla wszystkich tenantów"}}
+      }
+    },
+    "/opal/health": {
+      "get": {
+        "summary": "OPAL Integration Health Check",
+        "description": "Sprawdza gotowość integracji OPAL External Data Sources",
+        "tags": ["OPAL", "System"],
+        "responses": {
+          "200": {"description": "OPAL integration jest gotowa"},
+          "503": {"description": "OPAL integration nie jest gotowa"}
+        }
+      }
+    },
+    "/opal/full-snapshot": {
+      "get": {
+        "summary": "OPAL Full Snapshot",
+        "description": "Endpoint dla OPAL_ALL_DATA_URL - zwraca pełną strukturę danych dla wszystkich tenantów",
+        "tags": ["OPAL", "Data"],
+        "responses": {
+          "200": {"description": "Pełny snapshot danych dla OPA"},
+          "503": {"description": "Baza danych niedostępna"}
+        }
+      }
+    },
+    "/debug/user_access/{user_id}/{tenant_id}": {
+      "get": {
+        "summary": "Debug dostępów użytkownika",
+        "description": "Endpoint debugowy do sprawdzania dostępów użytkownika w kontekście tenanta",
+        "tags": ["Debug", "Users"],
+        "parameters": [
+          {"name": "user_id", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"name": "tenant_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Informacje debugowe o dostępach użytkownika"}}
+      }
+    },
+    "/sync/metrics": {
+      "get": {
+        "summary": "Metryki synchronizacji",
+        "description": "Endpoint do monitoringu stanu User Data Sync Service",
+        "tags": ["Sync", "Metrics"],
+        "responses": {
+          "200": {"description": "Metryki synchronizacji"},
+          "503": {"description": "User Data Sync Service niedostępny"}
+        }
+      }
+    },
+    "/init-db": {
+      "post": {
+        "summary": "Inicjalizacja bazy danych",
+        "description": "Inicjalizuje bazę danych schema i seed data. Endpoint dostępny dla administratorów Railway",
+        "tags": ["Init", "Database"],
+        "responses": {
+          "200": {"description": "Baza danych została zainicjalizowana pomyślnie"},
+          "500": {"description": "Inicjalizacja bazy danych nie powiodła się"}
         }
       }
     }
@@ -343,15 +718,15 @@
   "tags": [
     {
       "name": "System",
-      "description": "Endpointy systemowe"
+      "description": "Endpointy systemowe, health check i dokumentacja"
     },
     {
       "name": "Tenants",
-      "description": "Zarządzanie tenantami"
+      "description": "Zarządzanie tenantami w systemie multi-tenant"
     },
     {
       "name": "ACL",
-      "description": "Dane kontroli dostępu"
+      "description": "Dane kontroli dostępu dla OPA"
     },
     {
       "name": "Users",
@@ -362,8 +737,24 @@
       "description": "Zarządzanie firmami"
     },
     {
+      "name": "Teams",
+      "description": "Zarządzanie zespołami (NOWY w v3.2.0)"
+    },
+    {
+      "name": "Members",
+      "description": "Zarządzanie członkami zespołów (NOWY w v3.2.0)"
+    },
+    {
       "name": "Profiles",
       "description": "Zarządzanie profilami aplikacji"
+    },
+    {
+      "name": "Applications",
+      "description": "Zarządzanie aplikacjami"
+    },
+    {
+      "name": "Roles",
+      "description": "Zarządzanie rolami użytkowników"
     },
     {
       "name": "User Access",
@@ -374,16 +765,36 @@
       "description": "Integracja z OPAL External Data Sources"
     },
     {
+      "name": "Data",
+      "description": "Endpointy dostarczania danych"
+    },
+    {
       "name": "Bootstrap",
       "description": "Endpointy do bootstrap'owania systemu"
     },
     {
       "name": "Debug",
-      "description": "Endpointy debugowe"
+      "description": "Endpointy debugowe i diagnostyczne"
     },
     {
       "name": "Sync",
-      "description": "Synchronizacja danych z OPAL"
+      "description": "Synchronizacja danych z OPAL i profilami"
+    },
+    {
+      "name": "Metrics",
+      "description": "Metryki i monitoring"
+    },
+    {
+      "name": "Init",
+      "description": "Inicjalizacja bazy danych"
+    },
+    {
+      "name": "Database",
+      "description": "Operacje na bazie danych"
+    },
+    {
+      "name": "Portal",
+      "description": "Endpointy dedykowane dla portalu"
     }
   ]
 } 

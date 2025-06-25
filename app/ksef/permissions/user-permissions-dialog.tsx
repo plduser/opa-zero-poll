@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { User, Users, Shield } from "lucide-react"
+import { User, Users, Shield, Building2 } from "lucide-react"
 
 // Poprawmy interfejs, aby był spójny
 interface UserPermissionsDialogProps {
@@ -39,6 +39,7 @@ export function UserPermissionsDialog({
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null)
   const [selectedGroups, setSelectedGroups] = useState<string[]>([])
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([])
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([])
   // Dodajemy flagę, aby zapobiec nieskończonej pętli aktualizacji
   const [initialSetupDone, setInitialSetupDone] = useState(false)
 
@@ -47,6 +48,7 @@ export function UserPermissionsDialog({
   const [apiProfiles, setApiProfiles] = useState<any[]>([])
   const [apiGroups, setApiGroups] = useState<any[]>([]) 
   const [apiPermissions, setApiPermissions] = useState<any[]>([])
+  const [apiTeams, setApiTeams] = useState<any[]>([])
 
   // Funkcja do ładowania danych z API
   const loadApiData = async () => {
@@ -67,6 +69,18 @@ export function UserPermissionsDialog({
       
       // Profile = Grupy w KSEF
       setApiGroups(ksefProfiles)
+      
+      // Załaduj zespoły z API
+      const teamsResponse = await fetch('http://localhost:8110/api/teams')
+      const teamsData = await teamsResponse.json()
+      const allTeams = teamsData.teams.map((t: any) => ({
+        id: t.team_id,
+        name: t.team_name,
+        type: t.team_type,
+        description: t.description,
+        status: t.status
+      }))
+      setApiTeams(allTeams)
       
       // Załaduj uprawnienia z userInfo (z API call dla użytkownika)
       if (userInfo?.rolePermissions && userInfo.rolePermissions.length > 0) {
@@ -97,6 +111,7 @@ export function UserPermissionsDialog({
   const profiles = propProfiles || apiProfiles
   const groups = propGroups || apiGroups
   const permissions = propPermissions || apiPermissions
+  const teams = apiTeams
 
   // Funkcja do normalizacji nazw - usuwa polskie znaki dla porównania
   const normalizeProfileName = (name: string): string => {
@@ -150,6 +165,11 @@ export function UserPermissionsDialog({
         }
       }
 
+      // Załaduj zespoły użytkownika z API
+      if (userInfo.id) {
+        loadUserTeams(userInfo.id)
+      }
+
       // Ustaw uprawnienia na podstawie rzeczywistych role_mappings z bazy danych
       if (userInfo.rolePermissions && Array.isArray(userInfo.rolePermissions)) {
         console.log("🎯 Role mappings z bazy:", userInfo.rolePermissions)
@@ -179,6 +199,20 @@ export function UserPermissionsDialog({
       setInitialSetupDone(true)
     }
   }, [userInfo, apiProfiles, apiGroups, apiPermissions, open, initialSetupDone, loading])
+
+  // Funkcja do ładowania zespołów użytkownika
+  const loadUserTeams = async (userId: string) => {
+    try {
+      const response = await fetch(`http://localhost:8110/api/users/${userId}/teams`)
+      const data = await response.json()
+      if (data.user_teams) {
+        const userTeamIds = data.user_teams.map((ut: any) => ut.team_id)
+        setSelectedTeams(userTeamIds)
+      }
+    } catch (error) {
+      console.error('Błąd ładowania zespołów użytkownika:', error)
+    }
+  }
 
   // Obsługa zmiany profilu
   const handleProfileChange = (profileId: string) => {
@@ -219,6 +253,14 @@ export function UserPermissionsDialog({
     } else {
       setSelectedPermissions([...selectedPermissions, id])
     }
+  }
+
+  const handleToggleTeam = (teamId: string) => {
+    setSelectedTeams(prev => 
+      prev.includes(teamId)
+        ? prev.filter(id => id !== teamId)
+        : [...prev, teamId]
+    )
   }
 
   const handleSave = () => {
@@ -272,7 +314,7 @@ export function UserPermissionsDialog({
 
           {/* Zakładki dla różnych metod nadawania uprawnień */}
           <Tabs defaultValue="profile" value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="mb-4 grid grid-cols-3">
+            <TabsList className="mb-4 grid grid-cols-4">
               <TabsTrigger value="profile" className="font-quicksand">
                 <User className="h-4 w-4 mr-2" />
                 Profil
@@ -280,6 +322,10 @@ export function UserPermissionsDialog({
               <TabsTrigger value="groups" className="font-quicksand">
                 <Users className="h-4 w-4 mr-2" />
                 Role
+              </TabsTrigger>
+              <TabsTrigger value="teams" className="font-quicksand">
+                <Building2 className="h-4 w-4 mr-2" />
+                Zespoły
               </TabsTrigger>
               <TabsTrigger value="permissions" className="font-quicksand">
                 <Shield className="h-4 w-4 mr-2" />
@@ -347,6 +393,80 @@ export function UserPermissionsDialog({
                     </TableBody>
                   </Table>
                 </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="teams" className="space-y-4">
+              <div className="p-4 bg-gray-50 rounded-lg">
+                <p className="text-sm text-gray-600 mb-4">
+                  Przypisanie do zespołów pozwala na nadanie uprawnień związanych z konkretnym zespołem i jego obszarem odpowiedzialności w aplikacji KSEF.
+                </p>
+                <div className="border rounded-lg overflow-hidden bg-white">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-12">Wybierz</TableHead>
+                        <TableHead>Nazwa zespołu</TableHead>
+                        <TableHead>Typ</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Opis</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {teams.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                            {loading ? "Ładowanie zespołów..." : "Brak dostępnych zespołów"}
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        teams.map((team) => (
+                          <TableRow key={team.id} className={selectedTeams.includes(team.id) ? "bg-green-50" : ""}>
+                            <TableCell>
+                              <Checkbox
+                                checked={selectedTeams.includes(team.id)}
+                                onCheckedChange={() => handleToggleTeam(team.id)}
+                              />
+                            </TableCell>
+                            <TableCell className="font-medium">{team.name}</TableCell>
+                            <TableCell>
+                              <Badge className="bg-blue-50 text-blue-800 border-blue-100">
+                                {team.type === 'functional' ? 'Funkcjonalny' : 
+                                 team.type === 'project' ? 'Projektowy' : 
+                                 team.type === 'department' ? 'Departament' : 
+                                 team.type === 'external' ? 'Zewnętrzny' : team.type}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Badge className={
+                                team.status === 'active' ? 'bg-green-50 text-green-800 border-green-100' :
+                                team.status === 'inactive' ? 'bg-yellow-50 text-yellow-800 border-yellow-100' :
+                                'bg-gray-50 text-gray-800 border-gray-100'
+                              }>
+                                {team.status === 'active' ? 'Aktywny' : 
+                                 team.status === 'inactive' ? 'Nieaktywny' : 
+                                 team.status === 'archived' ? 'Zarchiwizowany' : team.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-gray-600">{team.description}</TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+                
+                {selectedTeams.length > 0 && (
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-blue-800">
+                      <strong>Wybrane zespoły ({selectedTeams.length}):</strong> {" "}
+                      {teams
+                        .filter(team => selectedTeams.includes(team.id))
+                        .map(team => team.name)
+                        .join(", ")}
+                    </p>
+                  </div>
+                )}
               </div>
             </TabsContent>
 
@@ -434,8 +554,8 @@ export function UserPermissionsDialog({
                 {/* Informacja o edycji uprawnień */}
                 <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-sm text-blue-800">
-                    💡 <strong>Wskazówka:</strong> Aby zmienić uprawnienia użytkownika, przejdź do zakładki "Profil" lub "Role" 
-                    i zmień przypisanie użytkownika do odpowiedniego profilu lub ról.
+                    💡 <strong>Wskazówka:</strong> Aby zmienić uprawnienia użytkownika, przejdź do zakładki "Profil", "Role" lub "Zespoły" 
+                    i zmień przypisanie użytkownika do odpowiedniego profilu, ról lub zespołów.
                   </p>
                 </div>
               </div>

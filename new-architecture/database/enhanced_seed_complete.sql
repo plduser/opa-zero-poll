@@ -100,7 +100,15 @@ INSERT INTO roles (app_id, role_name, description, is_system_role) VALUES
 ('ksef', 'Księgowa', 'Księgowa KSEF - standardowe uprawnienia', true),
 ('ksef', 'Handlowiec', 'Handlowiec KSEF - uprawnienia handlowe', true),
 ('ksef', 'Wlasciciel_KA', 'Właściciel KA KSEF - uprawnienia właściciela', true),
-('ksef', 'Zakupowiec', 'Zakupowiec KSEF - uprawnienia zakupowe', true);
+('ksef', 'Zakupowiec', 'Zakupowiec KSEF - uprawnienia zakupowe', true),
+-- eDokumenty roles
+('edokumenty', 'edokumenty_admin', 'Administrator eDokumenty - pełne uprawnienia', true),
+('edokumenty', 'edokumenty_ksiegowa', 'Księgowa eDokumenty - standardowe uprawnienia księgowe', true),
+('edokumenty', 'edokumenty_user', 'Użytkownik eDokumenty - podstawowe uprawnienia', true),
+-- eDeklaracje roles
+('edeklaracje', 'edeklaracje_admin', 'Administrator eDeklaracje - pełne uprawnienia', true),
+('edeklaracje', 'edeklaracje_edytor', 'Edytor eDeklaracje - standardowe uprawnienia edycji', true),
+('edeklaracje', 'edeklaracje_user', 'Użytkownik eDeklaracje - podstawowe uprawnienia', true);
 
 -- Insert Application Profiles (Portal Symfonia Concept) - FIXED NAMES!
 INSERT INTO application_profiles (app_id, profile_name, description, is_default) VALUES
@@ -160,7 +168,15 @@ WHERE ap.app_id = r.app_id AND (
     (ap.app_id = 'ksef' AND ap.profile_name = 'Księgowa' AND r.role_name = 'Księgowa') OR
     (ap.app_id = 'ksef' AND ap.profile_name = 'Handlowiec' AND r.role_name = 'Handlowiec') OR
     (ap.app_id = 'ksef' AND ap.profile_name = 'Właściciel' AND r.role_name = 'Wlasciciel_KA') OR
-    (ap.app_id = 'ksef' AND ap.profile_name = 'Zakupowiec' AND r.role_name = 'Zakupowiec')
+    (ap.app_id = 'ksef' AND ap.profile_name = 'Zakupowiec' AND r.role_name = 'Zakupowiec') OR
+    -- eDokumenty mappings
+    (ap.app_id = 'edokumenty' AND ap.profile_name = 'Administrator' AND r.role_name = 'edokumenty_admin') OR
+    (ap.app_id = 'edokumenty' AND ap.profile_name = 'Księgowa' AND r.role_name = 'edokumenty_ksiegowa') OR
+    (ap.app_id = 'edokumenty' AND ap.profile_name = 'Użytkownik' AND r.role_name = 'edokumenty_user') OR
+    -- eDeklaracje mappings
+    (ap.app_id = 'edeklaracje' AND ap.profile_name = 'Administrator' AND r.role_name = 'edeklaracje_admin') OR
+    (ap.app_id = 'edeklaracje' AND ap.profile_name = 'Edytor' AND r.role_name = 'edeklaracje_edytor') OR
+    (ap.app_id = 'edeklaracje' AND ap.profile_name = 'Użytkownik' AND r.role_name = 'edeklaracje_user')
 );
 
 -- ============================================================================
