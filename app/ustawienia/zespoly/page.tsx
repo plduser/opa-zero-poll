@@ -11,7 +11,9 @@ import {
   Trash2,
   MoreHorizontal,
   UserPlus,
-  Settings
+  Settings,
+  CheckCircle,
+  X
 } from "lucide-react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
@@ -33,12 +35,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { fetchTeams, type Team } from "@/lib/teams-api"
+import { CreateTeamDialog } from "./create-team-dialog"
+import { EditTeamDialog } from "./edit-team-dialog"
 
 export default function ZespolyPage() {
   const [teams, setTeams] = useState<Team[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [teamToEdit, setTeamToEdit] = useState<Team | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const { menuItems, activeItem, currentApp } = useAppMenu()
 
   // Load teams data
@@ -59,6 +68,48 @@ export default function ZespolyPage() {
 
     loadTeams()
   }, [])
+
+  // Reload teams data
+  const reloadTeams = async () => {
+    try {
+      const teamsData = await fetchTeams("tenant125") // TODO: Get from auth context
+      setTeams(teamsData)
+    } catch (err) {
+      console.error('Error reloading teams:', err)
+    }
+  }
+
+  // Handle successful team creation
+  const handleCreateSuccess = async (team: Team, message: string) => {
+    setSuccessMessage(message)
+    setTimeout(() => setSuccessMessage(null), 5000)
+    await reloadTeams()
+  }
+
+  // Handle team creation error
+  const handleCreateError = (message: string) => {
+    setErrorMessage(message)
+    setTimeout(() => setErrorMessage(null), 5000)
+  }
+
+  // Handle team edit
+  const handleEditTeam = (team: Team) => {
+    setTeamToEdit(team)
+    setIsEditDialogOpen(true)
+  }
+
+  // Handle successful team edit
+  const handleEditSuccess = async (team: Team, message: string) => {
+    setSuccessMessage(message)
+    setTimeout(() => setSuccessMessage(null), 5000)
+    await reloadTeams()
+  }
+
+  // Handle team edit error
+  const handleEditError = (message: string) => {
+    setErrorMessage(message)
+    setTimeout(() => setErrorMessage(null), 5000)
+  }
 
   // Filter teams based on search query
   const filteredTeams = teams.filter(team =>
@@ -166,6 +217,25 @@ export default function ZespolyPage() {
         />
         <main className="flex-1 p-8 bg-gray-50">
           <div className="space-y-6">
+      {/* Success/Error Messages */}
+      {successMessage && (
+        <div className="bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-md">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-5 w-5" />
+            <span>{successMessage}</span>
+          </div>
+        </div>
+      )}
+      
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-md">
+          <div className="flex items-center gap-2">
+            <X className="h-5 w-5" />
+            <span>{errorMessage}</span>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -174,7 +244,10 @@ export default function ZespolyPage() {
             Zarządzanie zespołami i ich członkami w organizacji
           </p>
         </div>
-        <Button className="bg-green-600 hover:bg-green-700">
+        <Button 
+          className="bg-green-600 hover:bg-green-700"
+          onClick={() => setIsCreateDialogOpen(true)}
+        >
           <Plus className="mr-2 h-4 w-4" />
           Nowy zespół
         </Button>
@@ -212,7 +285,10 @@ export default function ZespolyPage() {
               }
             </p>
             {!searchQuery && (
-              <Button className="bg-green-600 hover:bg-green-700">
+              <Button 
+                className="bg-green-600 hover:bg-green-700"
+                onClick={() => setIsCreateDialogOpen(true)}
+              >
                 <Plus className="mr-2 h-4 w-4" />
                 Utwórz pierwszy zespół
               </Button>
@@ -247,7 +323,7 @@ export default function ZespolyPage() {
                           Zobacz szczegóły
                         </Link>
                       </DropdownMenuItem>
-                      <DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleEditTeam(team)}>
                         <Edit className="mr-2 h-4 w-4" />
                         Edytuj zespół
                       </DropdownMenuItem>
@@ -306,6 +382,24 @@ export default function ZespolyPage() {
           </div>
         </main>
       </div>
+      
+      {/* Create Team Dialog */}
+      <CreateTeamDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        tenantId="tenant125"
+        onSuccess={handleCreateSuccess}
+        onError={handleCreateError}
+      />
+      
+      {/* Edit Team Dialog */}
+      <EditTeamDialog
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        team={teamToEdit}
+        onSuccess={handleEditSuccess}
+        onError={handleEditError}
+      />
     </div>
   )
 } 
