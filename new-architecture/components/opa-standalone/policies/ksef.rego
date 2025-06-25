@@ -18,6 +18,34 @@ allow if {
     # Mapowanie akcji na wymagane uprawnienia
     required_permission := action_to_permission[input.action]
     required_permission in ksef_permissions
+    
+    # Dodatkowa weryfikacja uprawnień do firmy (jeśli company_id jest podane)
+    company_access_granted
+}
+
+# Sprawdzenie dostępu do firmy
+company_access_granted if {
+    # Jeśli nie ma company_id w input, pozwalamy (zachowanie wsteczne)
+    not input.company_id
+}
+
+company_access_granted if {
+    # Jeśli jest company_id, sprawdzamy czy użytkownik ma dostęp do tej firmy
+    input.company_id
+    user_data := data.acl[input.tenant].data.users[input.user]
+    
+    # Sprawdzamy czy użytkownik ma dostęp do tej firmy poprzez companies
+    user_companies := user_data.companies
+    company_found := user_companies[_]
+    company_found.company_id == input.company_id
+}
+
+company_access_granted if {
+    # Alternatywnie: admin ma dostęp do wszystkich firm
+    input.company_id
+    user_data := data.acl[input.tenant].data.users[input.user]
+    ksef_roles := user_data.roles.ksef
+    "Administrator" in ksef_roles
 }
 
 # Mapowanie akcji na wymagane uprawnienia KSEF
@@ -42,9 +70,26 @@ decision := {
     "user": input.user,
     "tenant": input.tenant,
     "action": input.action,
+    "company_id": input.company_id,
     "user_roles": user_roles_safe,
     "user_permissions": user_permissions_safe,
+    "user_companies": user_companies_safe,
     "required_permission": action_to_permission[input.action],
+    "company_access": company_access_granted,
+    "reason": reason
+}
+
+# Response z dodatkowymi informacjami dla debugowania
+response := {
+    "allow": allow,
+    "user": input.user,
+    "action": input.action,
+    "company_id": input.company_id,
+    "tenant": input.tenant,
+    "user_roles": user_roles,
+    "user_permissions": user_permissions,
+    "required_permission": required_permission,
+    "has_company_access": has_company_access,
     "reason": reason
 }
 
@@ -60,5 +105,32 @@ user_permissions_safe := permissions if {
     permissions := user_data.permissions.ksef
 } else = [] if true
 
-reason := "Access granted - user has required permission" if allow
-reason := sprintf("Access denied - user permissions %v do not include required permission '%s'", [user_permissions_safe, action_to_permission[input.action]]) if not allow 
+# Bezpieczne pobieranie firm użytkownika
+user_companies_safe := companies if {
+    user_data := data.acl[input.tenant].data.users[input.user]
+    companies := [c.company_id | c := user_data.companies[_]]
+} else = [] if true
+
+reason := "Access granted - user has required permission and company access" if {
+    allow
+    company_access_granted
+}
+
+reason := "Access denied - user lacks required permission" if {
+    not allow
+    company_access_granted
+    user_data := data.acl[input.tenant].data.users[input.user]
+    ksef_permissions := user_data.permissions.ksef
+    required_permission := action_to_permission[input.action]
+    not required_permission in ksef_permissions
+}
+
+reason := "Access denied - no access to specified company" if {
+    not company_access_granted
+    input.company_id
+}
+
+reason := sprintf("Access denied - user permissions %v do not include required permission '%s'", [user_permissions_safe, action_to_permission[input.action]]) if {
+    not allow
+    not input.company_id
+} 

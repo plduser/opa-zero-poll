@@ -6,6 +6,7 @@ export interface OPAInput {
   tenant: string
   action: string
   resource?: string
+  company_id?: string
 }
 
 export interface OPADecision {
@@ -13,6 +14,7 @@ export interface OPADecision {
   user: string
   action: string
   resource?: string
+  company_id?: string
   user_roles: string[]
   reason: string
 }
@@ -114,13 +116,14 @@ export async function checkKSEFPermission(input: OPAInput): Promise<OPADecision>
   }
 }
 
-// Funkcje pomocnicze dla konkretnych uprawnień KSEF
-export async function canViewPurchaseInvoices(userId: string, tenantId: string = "tenant1"): Promise<boolean> {
-  console.log(`[canViewPurchaseInvoices] Sprawdzanie dla userId: ${userId}`)
+// Funkcje pomocnicze dla konkretnych uprawnień KSEF z kontekstem firmy
+export async function canViewPurchaseInvoices(userId: string, tenantId: string = "tenant1", companyId?: string): Promise<boolean> {
+  console.log(`[canViewPurchaseInvoices] Sprawdzanie dla userId: ${userId}, companyId: ${companyId}`)
   const decision = await checkKSEFPermission({
     user: userId,
     tenant: tenantId,
-    action: "view_invoices_purchase"
+    action: "view_invoices_purchase",
+    company_id: companyId
   })
   console.log(`[canViewPurchaseInvoices] Decyzja OPA:`, decision)
   const result = decision?.allow || false
@@ -128,12 +131,13 @@ export async function canViewPurchaseInvoices(userId: string, tenantId: string =
   return result
 }
 
-export async function canViewSalesInvoices(userId: string, tenantId: string = "tenant1"): Promise<boolean> {
-  console.log(`[canViewSalesInvoices] Sprawdzanie dla userId: ${userId}`)
+export async function canViewSalesInvoices(userId: string, tenantId: string = "tenant1", companyId?: string): Promise<boolean> {
+  console.log(`[canViewSalesInvoices] Sprawdzanie dla userId: ${userId}, companyId: ${companyId}`)
   const decision = await checkKSEFPermission({
     user: userId,
     tenant: tenantId,
-    action: "view_invoices_sales"
+    action: "view_invoices_sales",
+    company_id: companyId
   })
   console.log(`[canViewSalesInvoices] Decyzja OPA:`, decision)
   const result = decision?.allow || false
@@ -141,11 +145,12 @@ export async function canViewSalesInvoices(userId: string, tenantId: string = "t
   return result
 }
 
-export async function canExportToSymfonia(userId: string, tenantId: string = "tenant1"): Promise<boolean> {
+export async function canExportToSymfonia(userId: string, tenantId: string = "tenant1", companyId?: string): Promise<boolean> {
   const decision = await checkKSEFPermission({
     user: userId,
     tenant: tenantId,
-    action: "export_to_symfonia"
+    action: "export_to_symfonia",
+    company_id: companyId
   })
   return decision?.allow || false
 }
