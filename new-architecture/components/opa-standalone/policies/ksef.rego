@@ -87,10 +87,9 @@ allow_rbac if {
     # Pobieramy dane użytkownika z ACL
     user_data := data.acl[input.tenant].data.users[input.user]
     
-    # Sprawdzamy czy użytkownik ma rolę w aplikacji KSEF
-    some role_assignment in user_data.role_assignments
-    role_assignment.app_id == "ksef"
-    role_name := role_assignment.role_name
+    # Sprawdzamy czy użytkownik ma role w aplikacji KSEF
+    user_ksef_roles := user_data.roles.ksef
+    some role_name in user_ksef_roles
     
     # Pobieramy uprawnienia tej roli ze statycznych danych
     role_permissions := ksef_role_permissions[role_name]
@@ -143,9 +142,9 @@ company_access_granted if {
     user_data := data.acl[input.tenant].data.users[input.user]
     
     # Sprawdzamy czy ma rolę Administrator lub Wlasciciel_KA w KSEF
-    some role_assignment in user_data.role_assignments
-    role_assignment.app_id == "ksef"
-    role_assignment.role_name in ["Administrator", "Wlasciciel_KA"]
+    user_ksef_roles := user_data.roles.ksef
+    some role_name in user_ksef_roles
+    role_name in ["Administrator", "Wlasciciel_KA"]
 }
 
 # Model 2: Dostęp przez zespół
@@ -194,5 +193,5 @@ user_exists if {
 # Pobiera role użytkownika w KSEF  
 user_ksef_roles := roles if {
     user_data := data.acl[input.tenant].data.users[input.user]
-    roles := [ra.role_name | ra := user_data.role_assignments[_]; ra.app_id == "ksef"]
+    roles := user_data.roles.ksef
 } else = [] 
