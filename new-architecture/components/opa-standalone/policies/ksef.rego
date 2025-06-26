@@ -83,7 +83,7 @@ action_to_permission := {
 # ===== GŁÓWNE REGUŁY AUTORYZACJI =====
 
 # Model 1: Autoryzacja oparta na rolach (RBAC)
-allow if {
+allow_rbac if {
     # Pobieramy dane użytkownika z ACL
     user_data := data.acl[input.tenant].data.users[input.user]
     
@@ -104,7 +104,7 @@ allow if {
 }
 
 # Model 2: Autoryzacja oparta na zespołach (ReBAC)
-allow if {
+allow_rebac if {
     # Sprawdzamy czy użytkownik jest członkiem zespołu z dostępem do firmy
     user_in_team_with_company_access
     
@@ -114,6 +114,10 @@ allow if {
     # Dla zespołów używamy podstawowych uprawnień (można rozszerzyć)
     basic_team_permission_granted
 }
+
+# Główna reguła autoryzacji (OR logic)
+allow if { allow_rbac }
+allow if { allow_rebac }
 
 # ===== SPRAWDZANIE DOSTĘPU DO FIRM =====
 
