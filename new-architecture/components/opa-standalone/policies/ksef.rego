@@ -23,6 +23,20 @@ ksef_role_permissions := {
         "canDeletePurchaseInvoices",
         "canDeleteSalesInvoices"
     ],
+    "Wlasciciel_KA": [
+        "canManageConfiguration",
+        "canManageDeclarations", 
+        "canManageUsers",
+        "canViewReports",
+        "canViewPurchaseInvoices",
+        "canViewSalesInvoices",
+        "canCreatePurchaseInvoices",
+        "canCreateSalesInvoices",
+        "canEditPurchaseInvoices",
+        "canEditSalesInvoices",
+        "canDeletePurchaseInvoices",
+        "canDeleteSalesInvoices"
+    ],
     "Księgowa": [
         "canViewPurchaseInvoices",
         "canViewSalesInvoices", 
@@ -36,6 +50,12 @@ ksef_role_permissions := {
         "canCreateSalesInvoices",
         "canEditSalesInvoices",
         "canViewSalesInvoices"
+    ],
+    "Zakupowiec": [
+        "canViewPurchaseInvoices",
+        "canCreatePurchaseInvoices",
+        "canEditPurchaseInvoices",
+        "canViewReports"
     ],
     "Specjalista": [
         "canViewPurchaseInvoices",
