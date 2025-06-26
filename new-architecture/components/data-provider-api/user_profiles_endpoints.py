@@ -500,5 +500,84 @@ def register_user_profiles_endpoints(app):
                 "error": str(e)
             }), 500
 
+    @app.route('/api/users/<user_id>/companies/direct', methods=['GET'])
+    def get_user_direct_companies(user_id):
+        """Pobierz TYLKO bezpośrednio przypisane firmy użytkownika (bez dostępów przez zespoły) - dla dialogu zarządzania dostępami"""
+        try:
+            # Pobierz parametry filtru z query
+            tenant_id = request.args.get('tenant_id')
+            
+            logger.info(f"Pobieranie BEZPOŚREDNIO przypisanych firm dla użytkownika {user_id} (tenant_id: {tenant_id})")
+            
+            with get_db_cursor() as cursor:
+                # === TYLKO BEZPOŚREDNIE DOSTĘPY: używaj user_access (nie user_effective_access) ===
+                base_query = """
+                    SELECT 
+                        ua.company_id,
+                        c.company_name,
+                        c.company_code,
+                        ua.tenant_id,
+                        c.nip,
+                        c.description,
+                        c.status,
+                        c.created_at,
+                        ua.access_type,
+                        ua.granted_at as assigned_date,
+                        ua.granted_by as assigned_by
+                    FROM user_access ua
+                    JOIN companies c ON ua.company_id = c.company_id
+                    WHERE ua.user_id = %s
+                """
+                
+                params = [user_id]
+                
+                # Filtrowanie po tenant_id jeśli podano
+                if tenant_id:
+                    base_query += " AND ua.tenant_id = %s"
+                    params.append(tenant_id)
+                
+                base_query += " ORDER BY c.company_name"
+                
+                cursor.execute(base_query, params)
+                companies = cursor.fetchall()
+                
+                # Przekształć wyniki do formatu JSON
+                result_companies = []
+                for row in companies:
+                    company_data = {
+                        "company_id": row['company_id'],
+                        "company_name": row['company_name'],
+                        "company_code": row['company_code'],
+                        "tenant_id": row['tenant_id'],
+                        "nip": row['nip'],
+                        "description": row['description'],
+                        "status": row['status'],
+                        "created_at": row['created_at'].isoformat() if row['created_at'] else None,
+                        "access_type": row['access_type'],
+                        "assigned_date": row['assigned_date'].isoformat() if row['assigned_date'] else None,
+                        "assigned_by": row['assigned_by'],
+                        # Oznacz że to są tylko bezpośrednie dostępy
+                        "access_sources": [{"type": "direct", "source_id": None}]
+                    }
+                    result_companies.append(company_data)
+                
+                result = {
+                    "user_id": user_id,
+                    "companies": result_companies,
+                    "total_companies": len(companies),
+                    "context": {
+                        "tenant_id": tenant_id,
+                        "access_type": "direct_only",
+                        "description": "Tylko bezpośrednio przypisane firmy (bez dostępów przez zespoły)"
+                    }
+                }
+                
+                logger.info(f"✅ Znaleziono {len(companies)} bezpośrednio przypisanych firm dla użytkownika {user_id}")
+                return jsonify(result)
+                
+        except Exception as e:
+            logger.error(f"❌ Błąd pobierania bezpośrednich firm dla użytkownika {user_id}: {e}")
+            return jsonify({"error": "Błąd pobierania bezpośrednich firm"}), 500
+
     logger.info("✅ User profiles endpoints registered")
 

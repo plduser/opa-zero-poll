@@ -30,6 +30,8 @@ export async function GET() {
       initials: user.initials || (user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : 'NU'),
       role: user.role || 'użytkownik',
       tenants: user.tenants || [],
+      // Ekstraktuj pierwszy tenant jako domyślny tenant_id
+      tenant_id: user.tenants?.[0]?.tenant_id || user.tenants?.[0]?.id || 'tenant125',
       status: user.status || 'active'
     })).filter((user: any) => user.status === 'active') || []
 

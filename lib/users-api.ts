@@ -477,4 +477,40 @@ export async function deleteUserCompany(userId: string, companyId: string): Prom
     console.error('Error deleting user company access:', error)
     throw error
   }
+}
+
+// Fetch ONLY directly assigned user companies (without team-based access) - for management dialogs
+export async function fetchDirectUserCompanies(userId: string): Promise<UserCompanyAccess[]> {
+  try {
+    console.log('Fetching DIRECT user companies for user:', userId)
+    
+    const response = await fetch(`${DATA_API_BASE_URL}/users/${userId}/companies/direct`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+
+    console.log('Direct user companies response status:', response.status)
+    
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || errorData.detail || 'Failed to fetch direct user companies')
+    }
+
+    const data = await response.json()
+    console.log('Direct user companies fetched:', data)
+    
+    // Map API response to UserCompanyAccess format
+    const companies = data.companies || []
+    return companies.map((company: any) => ({
+      company_id: company.company_id,
+      company_name: company.company_name,
+      assigned_date: company.assigned_date,
+      nip: company.nip
+    }))
+  } catch (error) {
+    console.error('Error fetching direct user companies:', error)
+    throw error
+  }
 } 

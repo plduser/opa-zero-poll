@@ -475,7 +475,7 @@ export default function KSEFPage() {
         </aside>
 
         {/* Zawartość główna */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 w-full max-w-none">
           {/* Debug Info - Kontekst użytkownika i firmy */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Kontekst autoryzacji:</h3>
@@ -503,9 +503,21 @@ export default function KSEFPage() {
           {/* Wyświetl odpowiednią zakładkę */}
           {selectedTab === "dashboard" && <KsefDashboard />}
 
-          {selectedTab === "purchase-invoices" && <PurchaseInvoicesTab />}
+          {selectedTab === "purchase-invoices" && (
+            <PurchaseInvoicesTab 
+              userId={currentUserId || 'user700'} 
+              tenantId={authContext.tenant || 'tenant125'} 
+              companyId={selectedCompany?.company_id} 
+            />
+          )}
           
-          {selectedTab === "sales-invoices" && <SalesInvoicesTab />}
+          {selectedTab === "sales-invoices" && (
+            <SalesInvoicesTab 
+              userId={currentUserId || 'user700'} 
+              tenantId={authContext.tenant || 'tenant125'} 
+              companyId={selectedCompany?.company_id} 
+            />
+          )}
 
           {selectedTab === "reports" && <ReportsTab />}
 

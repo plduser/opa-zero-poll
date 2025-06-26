@@ -18,9 +18,11 @@ interface CompanyData {
 }
 
 interface UserData {
+  tenant_id: string
   username: string
   email: string
   full_name: string
+  metadata?: any
 }
 
 interface TeamData {
@@ -299,7 +301,14 @@ class DataProviderClient {
       throw new ValidationError(validationErrors)
     }
     
-    return this.makeRequest('/api/users', 'POST', userData)
+    return this.makeRequest('/api/users', 'POST', {
+      tenant_id: userData.tenant_id,
+      username: userData.username,
+      email: userData.email,
+      full_name: userData.full_name,
+      status: 'active',
+      metadata: userData.metadata || {}
+    })
   }
 
   async syncUserProfiles(userId: string): Promise<any> {
@@ -379,7 +388,8 @@ class DataProviderClient {
     }
     
     return this.makeRequest(`/api/teams/${teamId}/members`, 'POST', {
-      user_id: userId
+      user_id: userId,
+      role: 'member'
     })
   }
 
@@ -392,7 +402,8 @@ class DataProviderClient {
     }
     
     return this.makeRequest(`/api/teams/${teamId}/companies`, 'POST', {
-      company_id: companyId
+      company_id: companyId,
+      access_type: 'manage'
     })
   }
 
@@ -571,9 +582,22 @@ async function seedTenantMaly(dataClient: DataProviderClient, tenantId: string):
     profiles_assigned: 0
   }
   
+  // Mapowanie ról na działy dla metadata
+  const roleToDepartmentMap: {[key: string]: string} = {
+    'Prezes': 'Zarząd',
+    'Księgowy': 'Księgowość',
+    'HR Manager': 'Kadry',
+    'Sales Manager': 'Sprzedaż',
+    'Handlowiec': 'Sprzedaż',
+    'Asystent': 'Administracja',
+    'Magazynier': 'Magazyn',
+    'Recepcja': 'Administracja',
+    'Praktykant': 'Ogólny'
+  }
+  
   // Lista użytkowników zgodnie z PRD
   const users = [
-    { username: 'anna.nowak', email: 'anna.nowak@techmart.pl', full_name: 'Anna Nowak', role: 'Prezes' },
+    { username: 'anna.nowak', email: 'anna.nowak@techmart.pl', full_name: 'Anna Nowak-Kowalska', role: 'Prezes' },
     { username: 'piotr.wisniewski', email: 'piotr.wisniewski@techmart.pl', full_name: 'Piotr Wiśniewski', role: 'Księgowy' },
     { username: 'maria.kowalczyk', email: 'maria.kowalczyk@techmart.pl', full_name: 'Maria Kowalczyk', role: 'HR Manager' },
     { username: 'tomasz.dabrowski', email: 'tomasz.dabrowski@techmart.pl', full_name: 'Tomasz Dąbrowski', role: 'Sales Manager' },
@@ -588,20 +612,30 @@ async function seedTenantMaly(dataClient: DataProviderClient, tenantId: string):
   // Tworzenie użytkowników (pomijamy pierwszego - to admin już istnieje)
   for (let i = 1; i < users.length; i++) {
     const user = users[i]
-    await dataClient.createUser({
+    const department = roleToDepartmentMap[user.role] || 'Ogólny'
+    
+    const createUserResponse = await dataClient.createUser({
+      tenant_id: tenantId,
       username: user.username,
       email: user.email,
-      full_name: user.full_name
+      full_name: user.full_name,
+      metadata: {
+        department: department,
+        role: user.role
+      }
     })
     
+    // Przechwycenie user_id z odpowiedzi API
+    const userId = createUserResponse.user.user_id
+    
     // Przypisz dostęp do firmy
-    await dataClient.assignUserToCompany(user.username, companyId)
+    await dataClient.assignUserToCompany(userId, companyId)
     
     // Przypisz profile aplikacji na podstawie roli
     const profiles = getUserProfilesByRole(user.role)
     for (const profile of profiles) {
-      await dataClient.assignUserProfile(user.username, {
-        user_id: user.username,
+      await dataClient.assignUserProfile(userId, {
+        user_id: userId,
         app_id: profile.app_id,
         profile_name: profile.profile_name
       })
@@ -609,7 +643,7 @@ async function seedTenantMaly(dataClient: DataProviderClient, tenantId: string):
     }
     
     // Synchronizuj profile z rolami
-    await dataClient.syncUserProfiles(user.username)
+    await dataClient.syncUserProfiles(userId)
     
     results.users_created++
   }
@@ -619,9 +653,10 @@ async function seedTenantMaly(dataClient: DataProviderClient, tenantId: string):
 }
 
 async function seedTenantDuzy(dataClient: DataProviderClient, tenantId: string): Promise<any> {
-  console.log('[Seed Duzy] Rozpoczynanie seedowania TENANT_DUZY...')
-  
-  const companyId = `company_${tenantId}`
+  try {
+    console.log('[Seed Duzy] Rozpoczynanie seedowania TENANT_DUZY...')
+    
+    const companyId = `company_${tenantId}`
   const results = {
     companies_created: 0,
     users_created: 0,
@@ -645,7 +680,7 @@ async function seedTenantDuzy(dataClient: DataProviderClient, tenantId: string):
       team_name: team.name,
       description: team.description
     })
-    const teamId = teamResponse.team_id
+    const teamId = teamResponse.team.team_id
     
     // Przypisanie zespołu do firmy
     await dataClient.assignTeamToCompany(teamId, companyId)
@@ -653,34 +688,40 @@ async function seedTenantDuzy(dataClient: DataProviderClient, tenantId: string):
     // Tworzenie użytkowników zespołu
     for (let i = 0; i < team.userCount; i++) {
       const userNumber = team.startUser + i
-      const username = `user_${userNumber}`
+      const username = `user_${userNumber}_${tenantId.replace('tenant_', '')}`
       
-      // Tworzenie użytkownika
-      await dataClient.createUser({
+      // Tworzenie użytkownika z metadata departmentu
+      const userResponse = await dataClient.createUser({
+        tenant_id: tenantId,
         username: username,
-        email: `user${userNumber}@innovatetech.pl`,
-        full_name: `Użytkownik ${userNumber}`
+        email: `${username}@innovatetech.pl`,
+        full_name: `Użytkownik ${userNumber}`,
+        metadata: {
+          department: team.name,
+          role: getGenericRoleByTeam(team.name)
+        }
       })
+      const userId = userResponse.user.user_id
       
       // Dodanie do zespołu
-      await dataClient.addTeamMember(teamId, username)
+      await dataClient.addTeamMember(teamId, userId)
       
       // Przypisanie do firmy
-      await dataClient.assignUserToCompany(username, companyId)
+      await dataClient.assignUserToCompany(userId, companyId)
       
-      // Przypisanie profili na podstawie zespołu
-      const profiles = getTeamProfiles(team.name)
-      for (const profile of profiles) {
-        await dataClient.assignUserProfile(username, {
-          user_id: username,
-          app_id: profile.app_id,
-          profile_name: profile.profile_name
-        })
-        results.profiles_assigned++
-      }
-      
-      // Synchronizacja profili
-      await dataClient.syncUserProfiles(username)
+              // Przypisanie profili na podstawie zespołu
+        const profiles = getTeamProfiles(team.name)
+        for (const profile of profiles) {
+          await dataClient.assignUserProfile(userId, {
+            user_id: userId,
+            app_id: profile.app_id,
+            profile_name: profile.profile_name
+          })
+          results.profiles_assigned++
+        }
+        
+        // Synchronizacja profili
+        await dataClient.syncUserProfiles(userId)
       
       results.users_created++
     }
@@ -688,6 +729,11 @@ async function seedTenantDuzy(dataClient: DataProviderClient, tenantId: string):
   
   console.log('[Seed Duzy] ✅ Zakończono seedowanie')
   return results
+  
+  } catch (error) {
+    console.error('[Seed Duzy] ERROR in function:', error)
+    throw error
+  }
 }
 
 async function seedTenantGrupa(dataClient: DataProviderClient, tenantId: string): Promise<any> {
@@ -756,6 +802,7 @@ async function seedTenantGrupa(dataClient: DataProviderClient, tenantId: string)
       
       // Tworzenie użytkownika
       await dataClient.createUser({
+        tenant_id: tenantId,
         username: username,
         email: `${username}@capitalgroup.pl`,
         full_name: `Użytkownik ${username.split('_')[1]}`
@@ -834,6 +881,7 @@ async function seedTenantBiuro(dataClient: DataProviderClient, tenantId: string)
   for (let i = 2; i <= 7; i++) {
     const username = `user_${i}`
     await dataClient.createUser({
+      tenant_id: tenantId,
       username: username,
       email: `${username}@biurorachunkowe.pl`,
       full_name: `Księgowy ${i}`
@@ -951,6 +999,7 @@ async function seedTenantBiuroDuze(dataClient: DataProviderClient, tenantId: str
       
       // Tworzenie użytkownika
       await dataClient.createUser({
+        tenant_id: tenantId,
         username: username,
         email: `${username}@expertax.pl`,
         full_name: `Specjalista ${username.split('_')[1]}`
@@ -1063,6 +1112,23 @@ function getTeamProfiles(teamName: string): Array<{app_id: string, profile_name:
   }
   
   return teamProfileMap[teamName] || []
+}
+
+function getGenericRoleByTeam(teamName: string): string {
+  switch(teamName) {
+    case 'Księgowość':
+      return 'Księgowy'
+    case 'Kadry':
+      return 'Specjalista HR'
+    case 'Sales & Marketing':
+      return 'Specjalista Sprzedaży'
+    case 'IT':
+      return 'Specjalista IT'
+    case 'Zarząd':
+      return 'Manager'
+    default:
+      return 'Specjalista'
+  }
 }
 
 // ===== GŁÓWNA FUNKCJA ENDPOINTU =====
@@ -1180,7 +1246,9 @@ export async function POST(request: NextRequest) {
         detailedResults = await seedTenantMaly(dataClient, config.id)
         break
       case 'duza':
+        console.log('[API Seed Tenant] Przed wywołaniem seedTenantDuzy, config.id:', config.id)
         detailedResults = await seedTenantDuzy(dataClient, config.id)
+        console.log('[API Seed Tenant] Po seedTenantDuzy, detailedResults:', detailedResults)
         break
       case 'grupa':
         detailedResults = await seedTenantGrupa(dataClient, config.id)

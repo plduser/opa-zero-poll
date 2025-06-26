@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Building2, Info, CheckCircle } from "lucide-react"
-import { assignCompanyToUser, fetchCompaniesForUsers, type Company } from "@/lib/users-api"
+import { assignCompanyToUser, fetchCompaniesForUsers, fetchDirectUserCompanies, type Company } from "@/lib/users-api"
 
 interface CompanyAccessDialogProps {
   open: boolean
@@ -31,27 +31,46 @@ export function CompanyAccessDialog({
   const [loading, setLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Załaduj aplikacje i profile przy otwarciu dialogu
+  // Załaduj firmy dostępne do przypisania przy otwarciu dialogu
   useEffect(() => {
     if (open) {
-      loadCompanies()
+      loadAvailableCompanies()
       // Reset state when dialog opens
       setSelectedCompany("")
     }
   }, [open])
 
-  const loadCompanies = async () => {
+  const loadAvailableCompanies = async () => {
     try {
       setLoading(true)
-      console.log('Loading companies...')
+      console.log('Loading available companies for assignment...')
       
-      const companiesData = await fetchCompaniesForUsers()
-      console.log('Companies loaded:', companiesData)
+      if (!user.user_id) {
+        onError('Brak ID użytkownika')
+        return
+      }
+
+      // Pobierz wszystkie firmy i już bezpośrednio przypisane firmy
+      const [allCompanies, userDirectCompanies] = await Promise.all([
+        fetchCompaniesForUsers(),
+        fetchDirectUserCompanies(user.user_id)
+      ])
       
-      setCompanies(companiesData)
+      console.log('All companies:', allCompanies)
+      console.log('User direct companies:', userDirectCompanies)
+      
+      // Filtruj firmy - pokazuj tylko te, które NIE są już bezpośrednio przypisane
+      const directlyAssignedIds = new Set(userDirectCompanies.map(c => c.company_id))
+      const availableCompanies = allCompanies.filter(company => 
+        !directlyAssignedIds.has(company.company_id)
+      )
+      
+      console.log('Available companies for assignment:', availableCompanies)
+      setCompanies(availableCompanies)
+      
     } catch (error) {
-      console.error('Error loading companies:', error)
-      onError('Nie udało się załadować listy firm')
+      console.error('Error loading available companies:', error)
+      onError('Nie udało się załadować listy dostępnych firm')
     } finally {
       setLoading(false)
     }
@@ -95,7 +114,7 @@ export function CompanyAccessDialog({
         <DialogHeader>
           <DialogTitle className="text-xl font-bold font-quicksand flex items-center gap-2">
             <Building2 className="h-6 w-6 text-green-600" />
-            Nadaj dostęp do firmy
+            Nadaj bezpośredni dostęp do firmy
           </DialogTitle>
         </DialogHeader>
 
@@ -114,13 +133,26 @@ export function CompanyAccessDialog({
           {loading ? (
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-              <p className="mt-2 text-gray-600 font-quicksand">Ładowanie firm...</p>
+              <p className="mt-2 text-gray-600 font-quicksand">Ładowanie dostępnych firm...</p>
+            </div>
+          ) : companies.length === 0 ? (
+            <div className="text-center py-8">
+              <div className="text-gray-500 font-quicksand">
+                <Building2 className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p className="text-lg font-medium">Brak dostępnych firm</p>
+                <p className="text-sm">
+                  Użytkownik ma już bezpośredni dostęp do wszystkich firm<br/>
+                  lub otrzymuje dostęp przez zespoły.
+                </p>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
               {/* Wybór firmy */}
               <div className="space-y-2">
-                <label className="text-sm font-medium font-quicksand">Firma</label>
+                <label className="text-sm font-medium font-quicksand">
+                  Firma do przypisania <span className="text-gray-500">(tylko bezpośredni dostęp)</span>
+                </label>
                 <Select value={selectedCompany} onValueChange={setSelectedCompany}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Wybierz firmę" />
@@ -145,9 +177,10 @@ export function CompanyAccessDialog({
                   <div className="flex items-start gap-3">
                     <Info className="h-5 w-5 text-blue-600 mt-0.5" />
                     <div>
-                      <h4 className="font-medium text-blue-800 font-quicksand">Informacja</h4>
+                      <h4 className="font-medium text-blue-800 font-quicksand">Informacja o bezpośrednim dostępie</h4>
                       <p className="text-sm text-blue-700 font-quicksand">
-                        Użytkownik otrzyma dostęp do wybranej firmy. 
+                        Użytkownik otrzyma <strong>bezpośredni dostęp</strong> do wybranej firmy.<br/>
+                        To jest inny rodzaj dostępu niż dostęp przez zespoły.<br/>
                         Dostęp będzie obowiązywał do momentu jego odebrania.
                       </p>
                     </div>
@@ -180,7 +213,7 @@ export function CompanyAccessDialog({
             ) : (
               <>
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Przypisz dostęp
+                Przypisz bezpośredni dostęp
               </>
             )}
           </Button>

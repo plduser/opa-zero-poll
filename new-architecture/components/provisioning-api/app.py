@@ -282,6 +282,45 @@ def create_complete_tenant_structure(cursor, tenant_id, tenant_name, admin_email
             
             created_permissions.append(perm_name)
         
+        # 9. Przypisz administratorowi profile "Administrator" dla wszystkich aplikacji
+        assigned_profiles = []
+        applications_with_admin_profiles = [
+            'ebiuro', 'ksef', 'edokumenty', 'edeklaracje', 'fk', 'hr', 'crm'
+        ]
+        
+        for app_id in applications_with_admin_profiles:
+            # Sprawdź czy aplikacja istnieje
+            cursor.execute("SELECT app_id FROM applications WHERE app_id = %s", (app_id,))
+            if cursor.fetchone():
+                # Znajdź profil "Administrator" dla tej aplikacji
+                cursor.execute("""
+                    SELECT profile_id FROM application_profiles 
+                    WHERE app_id = %s AND profile_name = 'Administrator'
+                """, (app_id,))
+                admin_profile = cursor.fetchone()
+                
+                if admin_profile:
+                    profile_id = admin_profile[0]
+                    # Przypisz profil do użytkownika
+                    cursor.execute("""
+                        INSERT INTO user_application_profiles (user_id, profile_id, tenant_id, assigned_at, assigned_by)
+                        VALUES (%s, %s, %s, NOW(), 'system')
+                        ON CONFLICT (user_id, profile_id, tenant_id) DO NOTHING
+                    """, (user_id, profile_id, tenant_id))
+                    
+                    assigned_profiles.append({
+                        'app_id': app_id,
+                        'profile_name': 'Administrator',
+                        'profile_id': str(profile_id)
+                    })
+                    logger.info(f"✅ Przypisano profil Administrator aplikacji {app_id} dla użytkownika {user_id}")
+                else:
+                    logger.warning(f"⚠️ Nie znaleziono profilu Administrator dla aplikacji {app_id}")
+            else:
+                logger.warning(f"⚠️ Aplikacja {app_id} nie istnieje w bazie danych")
+        
+        logger.info(f"📋 Przypisano łącznie {len(assigned_profiles)} profili administratorskich")
+        
         # Zwróć informacje o utworzonej strukturze
         structure = {
             "tenant_id": tenant_id,
@@ -294,7 +333,9 @@ def create_complete_tenant_structure(cursor, tenant_id, tenant_name, admin_email
             "role_id": str(role_id),
             "role_name": "Portal Administrator",
             "permissions_count": len(created_permissions),
-            "permissions": created_permissions
+            "permissions": created_permissions,
+            "application_profiles_count": len(assigned_profiles),
+            "application_profiles": assigned_profiles
         }
         
         logger.info(f"✅ Complete tenant structure created:")
@@ -302,6 +343,31 @@ def create_complete_tenant_structure(cursor, tenant_id, tenant_name, admin_email
         logger.info(f"   - Company: {company_id}")
         logger.info(f"   - Administrator: {admin_name} ({admin_email})")
         logger.info(f"   - Role: Portal Administrator with {len(created_permissions)} permissions")
+        logger.info(f"   - Application profiles: {len(assigned_profiles)} Administrator profiles assigned")
+        
+        # 10. Synchronizuj profile z rolami przez Data Provider API
+        try:
+            import requests
+            import time
+            
+            # Krótkie opóźnienie dla synchronizacji danych
+            time.sleep(1)
+            
+            data_provider_url = "http://data-provider-api:8110"
+            sync_url = f"{data_provider_url}/api/users/{user_id}/sync-profiles"
+            
+            logger.info(f"🔄 Synchronizing profiles to roles for user {user_id}...")
+            sync_response = requests.post(sync_url, timeout=10)
+            
+            if sync_response.status_code == 200:
+                sync_data = sync_response.json()
+                total_roles = sync_data.get('total_roles_created', 0)
+                logger.info(f"✅ Profile synchronization successful - {total_roles} roles created")
+            else:
+                logger.warning(f"⚠️ Profile synchronization failed: HTTP {sync_response.status_code}")
+                
+        except Exception as sync_error:
+            logger.warning(f"⚠️ Profile synchronization error (non-critical): {sync_error}")
         
         return {"success": True, "structure": structure}
         
@@ -455,7 +521,7 @@ def get_tenant(tenant_id):
 
 @app.route("/tenants/<tenant_id>", methods=["DELETE"])
 def delete_tenant(tenant_id):
-    """Usuwa tenanta i wszystkie powiązane dane z PostgreSQL"""
+    """Usuwa tenanta i wszystkie powiązane dane z PostgreSQL (hard delete)"""
     logger.info(f"Tenant deletion requested for: {tenant_id}")
     
     try:
@@ -467,36 +533,93 @@ def delete_tenant(tenant_id):
             if not cursor.fetchone():
                 return jsonify({"error": "Tenant not found"}), 404
             
-            # Usuń powiązane dane (kaskadowo dzięki foreign keys)
-            # Najpierw policz co usuniemy
+            # Policz co usuniemy (przed usunięciem)
             cursor.execute("SELECT COUNT(*) FROM companies WHERE tenant_id = %s", (tenant_id,))
             company_count = cursor.fetchone()[0]
             
             cursor.execute("""
-                SELECT COUNT(DISTINCT u.user_id) FROM users u
-                JOIN user_access ua ON u.user_id = ua.user_id
+                SELECT COUNT(DISTINCT ua.user_id) FROM user_access ua
                 WHERE ua.tenant_id = %s
             """, (tenant_id,))
-            user_count = cursor.fetchone()[0]
+            user_access_count = cursor.fetchone()[0]
             
-            # Usuń tenanta (kaskadowo usuwa companies, user_access, user_roles)
+            logger.info(f"🗑️ Deleting tenant {tenant_id}: {company_count} companies, {user_access_count} user_access")
+            
+            # HARD DELETE w odpowiedniej kolejności (od najmniej do najbardziej podstawowych tabel)
+            
+            # 0. Znajdź użytkowników, którzy mają dostęp WYŁĄCZNIE do usuwanego tenanta
+            cursor.execute("""
+                SELECT u.user_id 
+                FROM users u
+                JOIN user_access ua ON u.user_id = ua.user_id
+                WHERE ua.tenant_id = %s
+                  AND u.user_id NOT IN (
+                      SELECT DISTINCT ua2.user_id 
+                      FROM user_access ua2 
+                      WHERE ua2.tenant_id != %s
+                  )
+            """, (tenant_id, tenant_id))
+            user_ids_to_delete = [row[0] for row in cursor.fetchall()]
+            users_to_delete_count = len(user_ids_to_delete)
+            
+            # Znajdź też użytkowników, którzy będą mieć jeszcze dostęp do innych tenantów
+            cursor.execute("""
+                SELECT DISTINCT u.user_id 
+                FROM users u
+                JOIN user_access ua ON u.user_id = ua.user_id
+                WHERE ua.tenant_id = %s
+                  AND u.user_id IN (
+                      SELECT DISTINCT ua2.user_id 
+                      FROM user_access ua2 
+                      WHERE ua2.tenant_id != %s
+                  )
+            """, (tenant_id, tenant_id))
+            users_to_keep = [row[0] for row in cursor.fetchall()]
+            users_to_keep_count = len(users_to_keep)
+            
+            logger.info(f"🗑️ Will delete {users_to_delete_count} users (exclusive to tenant): {user_ids_to_delete}")
+            logger.info(f"🔄 Will keep {users_to_keep_count} users (have access to other tenants): {users_to_keep}")
+            
+            # 1. Usuń wszystkie powiązania user-tenant (tabele z foreign keys na tenant_id)
+            cursor.execute("DELETE FROM user_application_profiles WHERE tenant_id = %s", (tenant_id,))
+            cursor.execute("DELETE FROM user_roles WHERE tenant_id = %s", (tenant_id,))
+            cursor.execute("DELETE FROM user_access WHERE tenant_id = %s", (tenant_id,))
+            cursor.execute("DELETE FROM user_tenants WHERE tenant_id = %s", (tenant_id,))  # To zamiast user_companies
+            cursor.execute("DELETE FROM teams WHERE tenant_id = %s", (tenant_id,))
+            
+            # 2. Usuń firmy powiązane z tenantem
+            cursor.execute("DELETE FROM companies WHERE tenant_id = %s", (tenant_id,))
+            
+            # 3. Usuń TYLKO użytkowników, którzy mieli dostęp wyłącznie do usuwanego tenanta
+            if user_ids_to_delete:
+                placeholders = ','.join(['%s'] * len(user_ids_to_delete))
+                cursor.execute(f"DELETE FROM users WHERE user_id IN ({placeholders})", user_ids_to_delete)
+            
+            # 4. Usuń tenanta
             cursor.execute("DELETE FROM tenants WHERE tenant_id = %s", (tenant_id,))
             
             conn.commit()
-            logger.info(f"Tenant {tenant_id} deleted successfully with {company_count} companies and {user_count} users")
+            logger.info(f"✅ Tenant {tenant_id} deleted successfully (companies: {company_count}, users deleted: {users_to_delete_count}, users kept: {users_to_keep_count}, user_access: {user_access_count})")
             
             return jsonify({
-                "message": "Tenant deleted successfully",
+                "message": "Tenant deleted successfully (hard delete with multi-tenant user protection)",
                 "tenant_id": tenant_id,
                 "deleted_companies": company_count,
-                "affected_users": user_count
+                "deleted_users": users_to_delete_count,
+                "users_kept_multi_tenant": users_to_keep_count,
+                "deleted_user_access": user_access_count,
+                "details": {
+                    "deleted_users": user_ids_to_delete,
+                    "kept_users": users_to_keep
+                }
             }), 200
             
     except Exception as e:
-        logger.error(f"Error deleting tenant {tenant_id}: {str(e)}")
+        logger.error(f"❌ Error deleting tenant {tenant_id}: {str(e)}")
         return jsonify({
             "error": "Failed to delete tenant",
-            "details": str(e)
+            "details": str(e),
+            "note": "Hard delete failed - check foreign key constraints"
         }), 500
 
 @app.route("/tenants/<tenant_id>/status", methods=["PUT"])

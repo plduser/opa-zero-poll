@@ -9,6 +9,11 @@ services:
     environment:
       - PORT=8110
       - DEBUG=true
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_NAME=opa_zero_poll
+      - DB_USER=opa_user
+      - DB_PASSWORD=opa_password123
     volumes:
       - ./logs:/app/logs:rw
     healthcheck:
