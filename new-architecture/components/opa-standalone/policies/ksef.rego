@@ -97,7 +97,7 @@ allow_rbac if {
     company_access_granted
 }
 
-# Model 2: Autoryzacja oparta na zespołach (ReBAC)
+# Model 2: Autoryzacja oparta na zespołach (ReBAC) - UŻYWA NOWYCH DANYCH team_roles
 allow_rebac if {
     # Sprawdzamy czy użytkownik ma dostęp przez zespół
     team_has_ksef_access
@@ -143,17 +143,18 @@ team_has_ksef_access if {
         team_id := membership.team_id
     }
     
-    # Sprawdź czy któryś zespół ma uprawnienia KSEF
+    # Sprawdź czy któryś zespół ma role KSEF w nowych danych team_roles
     some team_id in user_teams
+    some team_role in data.acl[input.tenant].data.team_roles
+    team_role.team_id == team_id
+    team_role.app_id == "ksef"
     
-    # Sprawdź uprawnienia zespołu w role_permissions
-    some perm in data.acl[input.tenant].data.role_permissions
-    perm.team_id == team_id
-    perm.app_id == "ksef"
+    # Pobieramy uprawnienia tej roli ze statycznych danych
+    role_permissions := ksef_role_permissions[team_role.role_name]
     
-    # Mapowanie uprawnień zespołu na akcje
+    # Sprawdzamy czy rola ma wymagane uprawnienie dla tej akcji
     required_permission := action_to_permission[input.action]
-    perm.permission_name == required_permission
+    required_permission in role_permissions
 }
 
 team_company_access if {
@@ -181,5 +182,23 @@ user_ksef_roles := roles if {
     roles := [assignment.role_name | 
         some assignment in user_data.role_assignments
         assignment.app_id == "ksef"
+    ]
+} else = [] 
+
+# Pobiera role użytkownika w KSEF przez zespoły (ReBAC)
+user_team_ksef_roles := roles if {
+    # Znajdź zespoły użytkownika
+    user_teams := {team_id | 
+        some membership in data.acl[input.tenant].data.team_memberships
+        membership.user_id == input.user
+        team_id := membership.team_id
+    }
+    
+    # Zbierz role KSEF z zespołów
+    roles := [sprintf("%s (zespół: %s)", [team_role.role_name, team_role.team_name]) | 
+        some team_id in user_teams
+        some team_role in data.acl[input.tenant].data.team_roles
+        team_role.team_id == team_id
+        team_role.app_id == "ksef"
     ]
 } else = [] 
