@@ -126,6 +126,16 @@ company_access_granted if {
     assignment.role_name in ["Administrator", "Wlasciciel_KA"]
 }
 
+# Model 1 (RBAC): dostęp przez bezpośrednie przypisanie firmy do użytkownika
+company_access_granted if {
+    input.company_id
+    
+    # Sprawdzamy czy użytkownik ma bezpośredni dostęp do firmy
+    some user_company in data.acl[input.tenant].data.user_companies
+    user_company.user_id == input.user
+    user_company.company_id == input.company_id
+}
+
 company_access_granted if {
     input.company_id
     
