@@ -137,15 +137,15 @@ company_access_granted if {
     user_company.company_id == input.company_id
 }
 
-# Model 1: Administrator ma dostęp do wszystkich firm
+# Model 1: Administrator i Właściciel mają dostęp do wszystkich firm
 company_access_granted if {
     input.company_id
     user_data := data.acl[input.tenant].data.users[input.user]
     
-    # Sprawdzamy czy ma rolę Administrator w KSEF
+    # Sprawdzamy czy ma rolę Administrator lub Wlasciciel_KA w KSEF
     some role_assignment in user_data.role_assignments
     role_assignment.app_id == "ksef"
-    role_assignment.role_name == "Administrator"
+    role_assignment.role_name in ["Administrator", "Wlasciciel_KA"]
 }
 
 # Model 2: Dostęp przez zespół
@@ -184,130 +184,15 @@ basic_team_permission_granted if {
     input.action in ["view_invoices_sales", "view_invoices_purchase", "view_reports"]
 }
 
-# ===== FUNKCJE DIAGNOSTYCZNE =====
-
-# Funkcja diagnostyczna - zwraca szczegółowe informacje o decyzji
-decision := {
-    "allow": allow,
-    "input": input,
-    "user_exists": user_exists,
-    "user_roles": user_ksef_roles,
-    "user_permissions": user_effective_permissions,
-    "user_teams": user_teams,
-    "user_companies_direct": user_companies_direct,
-    "user_companies_via_teams": user_companies_via_teams,
-    "required_permission": action_to_permission[input.action],
-    "company_access": company_access_granted,
-    "authorization_method": authorization_method,
-    "reason": reason
-}
+# ===== FUNKCJE DIAGNOSTYCZNE (UPROSZCZONE) =====
 
 # Sprawdza czy użytkownik istnieje
 user_exists if {
     data.acl[input.tenant].data.users[input.user]
 }
 
-# Pobiera role użytkownika w KSEF
+# Pobiera role użytkownika w KSEF  
 user_ksef_roles := roles if {
     user_data := data.acl[input.tenant].data.users[input.user]
     roles := [ra.role_name | ra := user_data.role_assignments[_]; ra.app_id == "ksef"]
-} else = []
-
-# Oblicza efektywne uprawnienia użytkownika
-user_effective_permissions := permissions if {
-    user_roles := user_ksef_roles
-    permissions := {p | 
-        some role in user_roles
-        some p in ksef_role_permissions[role]
-    }
-} else = set()
-
-# Pobiera zespoły użytkownika
-user_teams := teams if {
-    teams := [tm.team_id | tm := data.acl[input.tenant].data.team_memberships[_]; tm.user_id == input.user]
-} else = []
-
-# Pobiera firmy z bezpośredniego dostępu
-user_companies_direct := companies if {
-    companies := [uc.company_id | uc := data.acl[input.tenant].data.user_companies[_]; uc.user_id == input.user]
-} else = []
-
-# Pobiera firmy dostępne przez zespoły
-user_companies_via_teams := companies if {
-    user_team_ids := user_teams
-    companies := {tc.company_id | 
-        tc := data.acl[input.tenant].data.team_companies[_]
-        tc.team_id in user_team_ids
-    }
-} else = set()
-
-# Określa metodę autoryzacji
-authorization_method := "rbac_role" if {
-    allow
-    count(user_ksef_roles) > 0
-    not user_in_team_with_company_access
-}
-
-authorization_method := "rbac_admin" if {
-    allow
-    "Administrator" in user_ksef_roles
-    input.company_id
-}
-
-authorization_method := "team_based" if {
-    allow
-    user_in_team_with_company_access
-}
-
-authorization_method := "none" if {
-    not allow
-}
-
-# Przyczyna decyzji
-reason := "Access granted - user has required role permission" if {
-    allow
-    count(user_ksef_roles) > 0
-    required_permission := action_to_permission[input.action]
-    required_permission in user_effective_permissions
-}
-
-reason := "Access granted - admin access to all companies" if {
-    allow
-    "Administrator" in user_ksef_roles
-    input.company_id
-}
-
-reason := "Access granted - team-based access" if {
-    allow
-    user_in_team_with_company_access
-    basic_team_permission_granted
-}
-
-reason := "Access denied - user not found" if {
-    not allow
-    not user_exists
-}
-
-reason := "Access denied - no KSEF roles assigned" if {
-    not allow
-    user_exists
-    count(user_ksef_roles) == 0
-}
-
-reason := "Access denied - insufficient role permissions" if {
-    not allow
-    count(user_ksef_roles) > 0
-    required_permission := action_to_permission[input.action]
-    not required_permission in user_effective_permissions
-}
-
-reason := "Access denied - no access to specified company" if {
-    not allow
-    input.company_id
-    not company_access_granted
-}
-
-reason := sprintf("Access denied - unknown action '%s'", [input.action]) if {
-    not allow
-    not action_to_permission[input.action]
-} 
+} else = [] 
