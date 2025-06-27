@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Building2, Users, CheckCircle, Loader2, Info } from "lucide-react"
 import { addTeamCompany } from "@/lib/teams-api"
 import { fetchCompaniesForUsers, type Company } from "@/lib/users-api"
+import { useUserContext } from "@/hooks/use-user-context"
 
 interface TeamCompanyAccessDialogProps {
   open: boolean
@@ -32,22 +33,25 @@ export function TeamCompanyAccessDialog({
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Pobierz kontekst tenanta
+  const { tenantId, isLoading: isContextLoading } = useUserContext()
 
   // Załaduj firmy przy otwarciu dialogu
   useEffect(() => {
-    if (open) {
+    if (open && !isContextLoading && tenantId) {
       loadCompanies()
-             // Reset state when dialog opens
-       setSelectedCompany("")
+      // Reset state when dialog opens
+      setSelectedCompany("")
     }
-  }, [open])
+  }, [open, tenantId, isContextLoading])
 
   const loadCompanies = async () => {
     try {
       setLoading(true)
       console.log('Loading companies...')
       
-      const companiesData = await fetchCompaniesForUsers()
+      const companiesData = await fetchCompaniesForUsers(tenantId || undefined)
       console.log('Companies loaded:', companiesData)
       
       // Filtruj firmy już przypisane do zespołu
@@ -132,10 +136,12 @@ export function TeamCompanyAccessDialog({
             </div>
           </div>
 
-          {loading ? (
+          {(loading || isContextLoading) ? (
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-              <p className="mt-2 text-gray-600 font-quicksand">Ładowanie firm...</p>
+              <p className="mt-2 text-gray-600 font-quicksand">
+                {isContextLoading ? "Ładowanie kontekstu..." : "Ładowanie firm..."}
+              </p>
             </div>
           ) : companies.length === 0 ? (
             <div className="text-center py-8">

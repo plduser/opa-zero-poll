@@ -23,9 +23,11 @@ import { fetchCompanies, transformApiCompanyToPortalCompany, type Company } from
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { useAppMenu } from "@/hooks/use-app-menu"
+import { useUserContext } from "@/hooks/use-user-context"
 
 export default function CompaniesPage() {
   const { menuItems, activeItem, currentApp } = useAppMenu()
+  const { tenantId, isLoading: isContextLoading } = useUserContext()
   const [companies, setCompanies] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -41,7 +43,7 @@ export default function CompaniesPage() {
     nip: '',
     company_code: '',
     description: '',
-    tenant_id: 'tenant-1125948988-1750065356019' // Domyślny tenant_id
+    tenant_id: tenantId || 'tenant125' // Tenant_id z kontekstu
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   
@@ -58,13 +60,15 @@ export default function CompaniesPage() {
   // Ładowanie danych z API przy mount komponenta
   useEffect(() => {
     const loadCompanies = async () => {
+      if (isContextLoading || !tenantId) return
+      
       try {
         setLoading(true)
         setError(null)
-        console.log('🔄 Starting to fetch companies...')
+        console.log(`🔄 Ładowanie firm dla tenant: ${tenantId}`)
         
-        // Używamy dedykowanej funkcji API
-        const companiesData = await fetchCompanies('tenant125') // Używamy domyślnego tenant ID
+        // Używamy dedykowanej funkcji API z tenant_id z kontekstu
+        const companiesData = await fetchCompanies(tenantId)
         console.log('✅ Fetched data:', companiesData)
         
         // Transformujemy dane używając dedykowanej funkcji
@@ -98,7 +102,7 @@ export default function CompaniesPage() {
     }
 
     loadCompanies()
-  }, [])
+  }, [tenantId, isContextLoading])
 
   // Przykładowe dane użytkowników (pozostają statyczne na razie)
   const users = [
@@ -170,7 +174,7 @@ export default function CompaniesPage() {
           nip: '',
           company_code: '',
           description: '',
-          tenant_id: 'tenant-1125948988-1750065356019'
+          tenant_id: tenantId || 'tenant125'
         })
         
         // Zamknij dialog i pokaż sukces

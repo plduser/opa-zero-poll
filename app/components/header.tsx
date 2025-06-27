@@ -246,13 +246,24 @@ export function Header({ title }: HeaderProps) {
   useEffect(() => {
     setIsClient(true)
     const stored = localStorage.getItem('currentUser')
+    console.log('[Header] Debug - localStorage currentUser:', stored)
+    console.log('[Header] Debug - isLoadingUsers:', isLoadingUsers)
+    console.log('[Header] Debug - users.length:', users.length)
+    
     if (stored && !isLoadingUsers) {
       try {
         const storedUser = JSON.parse(stored)
+        console.log('[Header] Debug - parsed storedUser:', storedUser)
+        
         // Sprawdź czy użytkownik istnieje w aktualnej liście
         const existingUser = users.find(u => u.id === storedUser.id)
+        console.log('[Header] Debug - existingUser found:', existingUser)
+        
         if (existingUser) {
+          console.log('[Header] Debug - setting currentUser to existingUser:', existingUser)
           setCurrentUser(existingUser)
+        } else {
+          console.log('[Header] Debug - storedUser not found in users list')
         }
       } catch (e) {
         console.error('Błąd parsowania użytkownika z localStorage:', e)

@@ -68,10 +68,14 @@ export interface Company {
   status: string
 }
 
-// Fetch all users from API
-export async function fetchUsers(): Promise<User[]> {
+// Fetch all users from API (optionally filtered by tenant)
+export async function fetchUsers(tenantId?: string): Promise<User[]> {
   try {
-    const response = await fetch(`${DATA_API_BASE_URL}/users`)
+    const url = tenantId 
+      ? `${DATA_API_BASE_URL}/users?tenant_id=${tenantId}`
+      : `${DATA_API_BASE_URL}/users`
+      
+    const response = await fetch(url)
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }
@@ -228,9 +232,13 @@ export async function fetchProfile(profileId: string): Promise<Profile | null> {
 }
 
 // Fetch companies for user access management
-export async function fetchCompaniesForUsers(): Promise<Company[]> {
+export async function fetchCompaniesForUsers(tenantId?: string): Promise<Company[]> {
   try {
-    const response = await fetch(`${DATA_API_BASE_URL}/companies`)
+    const url = tenantId 
+      ? `${DATA_API_BASE_URL}/companies?tenant_id=${tenantId}`
+      : `${DATA_API_BASE_URL}/companies`
+      
+    const response = await fetch(url)
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`)
     }

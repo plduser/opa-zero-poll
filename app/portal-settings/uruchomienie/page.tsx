@@ -179,6 +179,17 @@ export default function UruchomieniePage() {
         </p>
       </div>
 
+      {/* Alert o stanie funkcji */}
+      <Alert className="border-yellow-200 bg-yellow-50">
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          <strong>🚧 Funkcja w rozwoju:</strong> Seedowanie tenantów jest częściowo zaimplementowane. 
+          Niektóre typy tenantów mogą wymagać dodatkowych skryptów Python do pełnej konfiguracji 
+          (np. <code>setup_tenant_biuro_duze_infrastructure.py</code>). 
+          Zobacz dokumentację w <code>docs/SEED-TENANT-PRD.md</code> dla szczegółów.
+        </AlertDescription>
+      </Alert>
+
       {/* ETAP 1: Inicjalizacja podstawowa */}
       <div className="space-y-6">
         <div>

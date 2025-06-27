@@ -18,6 +18,7 @@ interface TeamAssignmentDialogProps {
     name: string
     email: string
   } | null
+  tenantId: string
   onSuccess: (message: string) => void
   onError: (message: string) => void
 }
@@ -26,6 +27,7 @@ export function TeamAssignmentDialog({
   open,
   onOpenChange,
   user,
+  tenantId,
   onSuccess,
   onError
 }: TeamAssignmentDialogProps) {
@@ -75,7 +77,7 @@ export function TeamAssignmentDialog({
   const loadTeams = async () => {
     setLoadingTeams(true)
     try {
-      const teamsData = await fetchTeams('tenant125') // Using default tenant
+      const teamsData = await fetchTeams(tenantId)
       setTeams(teamsData)
     } catch (error) {
       console.error('Error loading teams:', error)

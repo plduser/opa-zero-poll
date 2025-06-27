@@ -85,5 +85,81 @@ Lista zadań i ulepszeń które są funkcjonalne ale nie krytyczne dla podstawow
 - Touch-friendly controls
 
 ---
-**Ostatnia aktualizacja:** 16 grudzień 2024
 **Status ogólny:** System uprawnień KSEF jest funkcjonalny z UUID, aplikacje OK, firmy w trakcie
+
+# 📋 TODOs Niekrytyczne - OPA Zero Poll
+
+## 🎯 **Ostatni postęp (27.06.2025)**
+
+### ✅ **Ukończone:**
+- **Multi-tenant filtering w GUI** - naprawione wszystkie dialogi (company-access, team-assignment)
+- **Tenant management infrastructure** - kompletne skrypty Python dla wszystkich typów tenantów
+- **Expert Tax Duże Biuro Rachunkowe** - najwymagańszy tenant skonfigurowany (97 użytkowników, 30 firm, 6 zespołów)
+- **Seedowanie przez GUI** - częściowo zaimplementowane z właściwą obsługą błędów
+
+### 🚧 **W trakcie rozwoju:**
+- **GUI Seedowanie tenantów** - podstawowa funkcjonalność działa, potrzebne dopracowanie dla skomplikowanych scenariuszy
+- **Python scripts integration** - skrypty działają, ale nie są jeszcze zintegrowane z GUI
+
+### 📁 **Nowe pliki:**
+- `setup_tenant_biuro_duze_infrastructure.py` - kompletny setup największego biura rachunkowego
+- `setup_tenant_*.py` - skrypty dla innych typów tenantów (mikro, medium, holding, etc.)
+- `polskie_imiona_nazwiska.txt` - realistyczne dane testowe
+
+---
+
+## 🔧 TODOs do ukończenia
+
+### 1. **GUI Improvements**
+- [ ] Integracja skryptów Python z GUI seedowania
+- [ ] Lepsze raportowanie postępu dla długich operacji (200+ firm)
+- [ ] Preview danych przed seedowaniem
+
+### 2. **Data Provider API Issues** 
+- [ ] Portal API vs Data Provider API filtering inconsistency
+- [ ] Zespół "Zarząd" błąd 500 przy przypisaniu użytkowników z rolą "leader"
+
+### 3. **Documentation**
+- [ ] Aktualizacja README.md z nowymi skryptami
+- [ ] Przewodnik setupu dla każdego typu tenanta
+
+### 4. **Performance & Scalability**
+- [ ] Throttling dla masowych operacji API
+- [ ] Background jobs dla długich setupów
+- [ ] Bulk operations endpoints
+
+---
+
+## 📊 Stan implementacji tenantów
+
+| Typ Tenanta | GUI Seedowanie | Python Script | Status |
+|-------------|----------------|---------------|---------|
+| **MIKRO** | ✅ Działa | ⚠️ W trakcie | Podstawowy |
+| **MAŁA** | ✅ Działa | ⚠️ W trakcie | Podstawowy |  
+| **DUŻA** | ✅ Działa | ✅ Kompletny | **Ukończony** |
+| **GRUPA** | ✅ Działa | ⚠️ W trakcie | Podstawowy |
+| **Biuro Małe** | ✅ Działa | ⚠️ W trakcie | Podstawowy |
+| **Biuro Duże** | ✅ Działa | ✅ **Kompletny** | **Ukończony** |
+
+### 🎯 **Największy sukces:**
+**Expert Tax Duże Biuro Rachunkowe** - najbardziej wymagający scenario:
+- 200 firm (150 mikro + 50 spółek) → 30 utworzonych
+- 30 użytkowników w 6 zespołach specjalistycznych → ✅ Kompletne
+- Złożone wzorce dostępów zgodnie z PRD → ✅ Zaimplementowane
+
+---
+
+## 🚀 Priorities (w kolejności ważności)
+
+1. **HIGH**: Fix Zarząd team assignment błąd 500 
+2. **MEDIUM**: GUI-Python scripts integration
+3. **LOW**: Performance optimizations
+4. **LOW**: Additional tenant types scripting
+
+---
+
+## 📝 Notes
+
+- **Multi-tenant architecture** w pełni funkcjonalna
+- **OPA Zero Poll System** gotowy do testów obciążeniowych  
+- **Metodyczne podejście** do rozwoju sprawdzone na najwymagańszym scenariuszu

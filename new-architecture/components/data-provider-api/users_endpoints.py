@@ -667,6 +667,8 @@ def register_users_endpoints(app):
         
         # Parametr do filtrowania użytkowników bez tenantów (domyślnie true)
         hide_users_without_tenants = request.args.get('hide_users_without_tenants', 'true').lower() == 'true'
+        # Parametr do filtrowania po tenant_id
+        tenant_id_filter = request.args.get('tenant_id')
         
         conn = get_db_connection()
         if not conn:
@@ -675,7 +677,7 @@ def register_users_endpoints(app):
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
                 # Pobierz użytkowników z ich tenantami i podstawowymi rolami, dodając department
-                cur.execute("""
+                base_query = """
                     SELECT DISTINCT
                         u.user_id,
                         u.username,
@@ -690,8 +692,15 @@ def register_users_endpoints(app):
                     LEFT JOIN user_tenants ut ON u.user_id = ut.user_id AND ut.is_active = true
                     LEFT JOIN tenants t ON ut.tenant_id = t.tenant_id
                     WHERE u.status = 'active'
-                    ORDER BY u.full_name, ut.is_default DESC
-                """)
+                """
+                
+                # Dodaj filtrowanie po tenant_id jeśli podane
+                if tenant_id_filter:
+                    base_query += " AND ut.tenant_id = %s"
+                    cur.execute(base_query + " ORDER BY u.full_name, ut.is_default DESC", (tenant_id_filter,))
+                    logger.info(f"🔍 Filtrowanie użytkowników po tenant_id: {tenant_id_filter}")
+                else:
+                    cur.execute(base_query + " ORDER BY u.full_name, ut.is_default DESC")
                 
                 users_data = cur.fetchall()
                 

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Building2, Info, CheckCircle } from "lucide-react"
 import { assignCompanyToUser, fetchCompaniesForUsers, fetchDirectUserCompanies, type Company } from "@/lib/users-api"
+import { useUserContext } from "@/hooks/use-user-context"
 
 interface CompanyAccessDialogProps {
   open: boolean
@@ -30,15 +31,18 @@ export function CompanyAccessDialog({
   const [companies, setCompanies] = useState<Company[]>([])
   const [loading, setLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  
+  // Pobierz kontekst tenanta
+  const { tenantId, isLoading: isContextLoading } = useUserContext()
 
   // Załaduj firmy dostępne do przypisania przy otwarciu dialogu
   useEffect(() => {
-    if (open) {
+    if (open && !isContextLoading && tenantId) {
       loadAvailableCompanies()
       // Reset state when dialog opens
       setSelectedCompany("")
     }
-  }, [open])
+  }, [open, tenantId, isContextLoading])
 
   const loadAvailableCompanies = async () => {
     try {
@@ -50,9 +54,9 @@ export function CompanyAccessDialog({
         return
       }
 
-      // Pobierz wszystkie firmy i już bezpośrednio przypisane firmy
+      // Pobierz wszystkie firmy (z filtrem tenanta) i już bezpośrednio przypisane firmy
       const [allCompanies, userDirectCompanies] = await Promise.all([
-        fetchCompaniesForUsers(),
+        fetchCompaniesForUsers(tenantId || undefined),
         fetchDirectUserCompanies(user.user_id)
       ])
       
@@ -130,10 +134,12 @@ export function CompanyAccessDialog({
             </div>
           </div>
 
-          {loading ? (
+          {(loading || isContextLoading) ? (
             <div className="text-center py-8">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-              <p className="mt-2 text-gray-600 font-quicksand">Ładowanie dostępnych firm...</p>
+              <p className="mt-2 text-gray-600 font-quicksand">
+                {isContextLoading ? "Ładowanie kontekstu..." : "Ładowanie dostępnych firm..."}
+              </p>
             </div>
           ) : companies.length === 0 ? (
             <div className="text-center py-8">

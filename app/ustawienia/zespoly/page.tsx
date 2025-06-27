@@ -37,6 +37,7 @@ import {
 import { fetchTeams, type Team } from "@/lib/teams-api"
 import { CreateTeamDialog } from "./create-team-dialog"
 import { EditTeamDialog } from "./edit-team-dialog"
+import { useUserContext } from "@/hooks/use-user-context"
 
 export default function ZespolyPage() {
   const [teams, setTeams] = useState<Team[]>([])
@@ -49,14 +50,18 @@ export default function ZespolyPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const { menuItems, activeItem, currentApp } = useAppMenu()
+  const { tenantId, isLoading: isContextLoading } = useUserContext()
 
   // Load teams data
   useEffect(() => {
     const loadTeams = async () => {
+      if (isContextLoading || !tenantId) return
+      
       try {
         setLoading(true)
         setError(null)
-        const teamsData = await fetchTeams("tenant125") // TODO: Get from auth context
+        console.log(`[Zespoły] Ładowanie zespołów dla tenant: ${tenantId}`)
+        const teamsData = await fetchTeams(tenantId)
         setTeams(teamsData)
       } catch (err) {
         console.error('Error loading teams:', err)
@@ -67,12 +72,15 @@ export default function ZespolyPage() {
     }
 
     loadTeams()
-  }, [])
+  }, [tenantId, isContextLoading])
 
   // Reload teams data
   const reloadTeams = async () => {
+    if (!tenantId) return
+    
     try {
-      const teamsData = await fetchTeams("tenant125") // TODO: Get from auth context
+      console.log(`[Zespoły] Przeładowanie zespołów dla tenant: ${tenantId}`)
+      const teamsData = await fetchTeams(tenantId)
       setTeams(teamsData)
     } catch (err) {
       console.error('Error reloading teams:', err)
@@ -387,7 +395,7 @@ export default function ZespolyPage() {
       <CreateTeamDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        tenantId="tenant125"
+        tenantId={tenantId || 'tenant125'}
         onSuccess={handleCreateSuccess}
         onError={handleCreateError}
       />

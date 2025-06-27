@@ -68,6 +68,7 @@ def get_tenant_acl_from_database(tenant_id: str) -> Optional[Dict[str, Any]]:
         # Build ACL structure with RAW data
         acl_data = {
             "tenant_id": tenant_id,
+            "tenant_name": tenant_row['tenant_name'] if tenant_row['tenant_name'] else "Unknown",
             "data": {
                 # RBAC Structure - Applications, Roles, Permissions
                 "applications": _get_applications_data(conn),
