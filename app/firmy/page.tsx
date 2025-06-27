@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { fetchCompanies, transformApiCompanyToPortalCompany, type Company } from "@/lib/companies-api"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -36,6 +37,7 @@ export default function CompaniesPage() {
   const [isManageAccessDialogOpen, setIsManageAccessDialogOpen] = useState(false)
   const [selectedCompany, setSelectedCompany] = useState<CompanyType | null>(null)
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
+  const [successMessage, setSuccessMessage] = useState({ title: '', description: '' })
   
   // State dla formularza dodawania firmy
   const [newCompany, setNewCompany] = useState({
@@ -56,6 +58,11 @@ export default function CompaniesPage() {
     company_code: '',
     description: ''
   })
+  
+  // State dla usuwania firmy
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [companyToDelete, setCompanyToDelete] = useState<any>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
   // Ładowanie danych z API przy mount komponenta
   useEffect(() => {
@@ -179,6 +186,7 @@ export default function CompaniesPage() {
         
         // Zamknij dialog i pokaż sukces
         setIsAddCompanyDialogOpen(false)
+        setSuccessMessage({ title: 'Dodano firmę', description: data.company?.company_name || 'Nowa firma' })
         setShowSuccessMessage(true)
         setTimeout(() => setShowSuccessMessage(false), 5000)
         
@@ -246,6 +254,7 @@ export default function CompaniesPage() {
         // Zamknij dialog i pokaż sukces
         setIsEditCompanyDialogOpen(false)
         setEditingCompany(null)
+        setSuccessMessage({ title: 'Zaktualizowano firmę', description: data.company?.company_name || 'Firma' })
         setShowSuccessMessage(true)
         setTimeout(() => setShowSuccessMessage(false), 5000)
         
@@ -261,6 +270,51 @@ export default function CompaniesPage() {
       alert('Błąd połączenia. Spróbuj ponownie.')
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleDeleteCompany = (company: any) => {
+    console.log('🗑️ Delete company requested:', company)
+    setCompanyToDelete(company)
+    setIsDeleteDialogOpen(true)
+  }
+
+  const confirmDeleteCompany = async () => {
+    if (!companyToDelete) return
+    
+    setIsDeleting(true)
+    
+    try {
+      const response = await fetch(`http://localhost:8110/api/companies/${companyToDelete.company_id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('✅ Firma usunięta:', data)
+        
+        // Zamknij dialog i pokaż sukces
+        setIsDeleteDialogOpen(false)
+        setCompanyToDelete(null)
+        setSuccessMessage({ title: 'Usunięto firmę', description: data.company?.company_name || 'Firma' })
+        setShowSuccessMessage(true)
+        setTimeout(() => setShowSuccessMessage(false), 5000)
+        
+        // Odśwież listę firm
+        window.location.reload() // Proste rozwiązanie na razie
+      } else {
+        const errorData = await response.json()
+        console.error('❌ Błąd usuwania firmy:', errorData)
+        alert(`Błąd: ${errorData.error || 'Nie udało się usunąć firmy'}`)
+      }
+    } catch (err) {
+      console.error('❌ Błąd sieci:', err)
+      alert('Błąd połączenia. Spróbuj ponownie.')
+    } finally {
+      setIsDeleting(false)
     }
   }
 
@@ -316,8 +370,8 @@ export default function CompaniesPage() {
             <div className="flex items-start gap-4 p-4 mb-6 bg-green-50 border border-green-200 rounded-lg">
               <CheckCircle className="h-6 w-6 text-green-800 flex-shrink-0" />
               <div>
-                <p className="font-bold text-green-800 font-quicksand">Dodano firmę</p>
-                <p className="text-sm text-green-800 font-quicksand">Techland Sp. z o.o.</p>
+                <p className="font-bold text-green-800 font-quicksand">{successMessage.title}</p>
+                <p className="text-sm text-green-800 font-quicksand">{successMessage.description}</p>
               </div>
               <button className="ml-auto text-green-800" onClick={() => setShowSuccessMessage(false)}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -413,7 +467,7 @@ export default function CompaniesPage() {
                         <Button variant="ghost" size="icon" onClick={() => handleEditCompany(company)}>
                           <Edit className="h-5 w-5 text-green-600" />
                         </Button>
-                        <Button variant="ghost" size="icon">
+                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCompany(company)}>
                           <Trash2 className="h-5 w-5 text-green-600" />
                         </Button>
                       </div>
@@ -711,6 +765,37 @@ export default function CompaniesPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+              {/* Dialog potwierdzania usuwania firmy */}
+        <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <AlertDialogContent className="max-w-md">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-xl font-bold font-quicksand">Potwierdź usunięcie firmy</AlertDialogTitle>
+              <AlertDialogDescription className="text-sm text-gray-500 font-quicksand">
+                Czy na pewno chcesz usunąć firmę "{companyToDelete?.name}"? Ta operacja przeniesie firmę do archiwum.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel 
+                className="border-green-600 text-green-600 font-quicksand"
+                onClick={() => {
+                  setIsDeleteDialogOpen(false)
+                  setCompanyToDelete(null)
+                }}
+                disabled={isDeleting}
+              >
+                Anuluj
+              </AlertDialogCancel>
+              <AlertDialogAction 
+                className="bg-red-600 hover:bg-red-700 text-white font-quicksand" 
+                onClick={confirmDeleteCompany}
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Usuwanie...' : 'Usuń firmę'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
     </div>
   )
 }
