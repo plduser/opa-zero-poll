@@ -30,13 +30,18 @@ export async function GET(request: Request) {
     const data = await response.json()
     console.log(`[API Companies] Pobrano ${data.companies?.length || 0} firm`)
 
-    return NextResponse.json(data)
+    // Dodaj success flag dla spójności z innymi endpointami
+    return NextResponse.json({
+      success: true,
+      ...data
+    })
 
   } catch (error) {
     console.error('[API Companies] Błąd pobierania firm:', error)
     
     return NextResponse.json(
       { 
+        success: false,
         error: 'Błąd pobierania firm',
         details: error instanceof Error ? error.message : 'Unknown error'
       },

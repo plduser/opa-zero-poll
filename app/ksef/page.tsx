@@ -49,6 +49,21 @@ export default function KSEFPage() {
 
   // Stan dla wybranej firmy
   const [selectedCompany, setSelectedCompany] = useState<any>(null)
+  
+  // Stan dla użytkownika
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [isClient, setIsClient] = useState(false)
+
+  // Stan dla wyświetlania kontekstu autoryzacji
+  const [authContext, setAuthContext] = useState<{
+    user: string | null
+    company: { id: string, name: string } | null
+    tenant: string
+  }>({
+    user: null,
+    company: null,
+    tenant: 'tenant125' // Będzie aktualizowany z danych użytkownika
+  })
 
   // Sprawdzanie uprawnień OPA przy ładowaniu komponentu i zmianie firmy
   useEffect(() => {
@@ -63,12 +78,28 @@ export default function KSEFPage() {
     
     const checkPermissions = async () => {
       try {
-        // Pobierz aktualnego użytkownika z localStorage
-        let userId = localStorage.getItem('currentUserId') || 'user700'
-        const tenantId = 'tenant125'
+        // Użyj stanu użytkownika i pobierz jego tenant
+        let userId = currentUserId || 'user700'
+        let tenantId = authContext.tenant || 'tenant125' // Użyj tenant z kontekstu
+        
+        // Pobierz tenant użytkownika z danych jeśli mamy currentUser
+        const storedUser = localStorage.getItem('currentUser')
+        if (storedUser) {
+          try {
+            const user = JSON.parse(storedUser)
+            if (user.tenant_id) {
+              tenantId = user.tenant_id
+              console.log(`[KSEF] Używam tenant z danych użytkownika: ${tenantId}`)
+            }
+          } catch (e) {
+            console.error('[KSEF] Błąd parsowania użytkownika:', e)
+          }
+        }
+        
         const companyId = selectedCompany?.company_id // Używamy wybranej firmy
         
         console.log(`[KSEF] Sprawdzanie uprawnień dla użytkownika: ${userId}`)
+        console.log(`[KSEF] Tenant: ${tenantId}`)
         console.log(`[KSEF] Kontekst firmy: ${companyId || 'brak'}`)
         
         // Sprawdź uprawnienia z kontekstem firmy
@@ -95,29 +126,100 @@ export default function KSEFPage() {
       }
     }
 
-    checkPermissions()
-  }, [selectedCompany]) // Dodajemy selectedCompany jako dependency
+    if (currentUserId) {
+      checkPermissions()
+    }
+  }, [selectedCompany, currentUserId, authContext.tenant]) // Dodajemy authContext.tenant jako dependency
 
-  // Inicjalizacja wybranej firmy z localStorage
+  // Inicjalizacja po stronie klienta
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const storedCompany = localStorage.getItem('selectedCompany')
-      if (storedCompany) {
-        try {
-          const company = JSON.parse(storedCompany)
-          console.log(`[KSEF] Inicjalizacja - wybrana firma z localStorage:`, company)
-          setSelectedCompany(company)
-        } catch (e) {
-          console.error('Błąd parsowania firmy z localStorage:', e)
-          setSelectedCompany(null)
-        }
+    setIsClient(true)
+    
+    // Inicjalizacja użytkownika z localStorage
+    const storedUserId = localStorage.getItem('currentUserId') || 'user700'
+    setCurrentUserId(storedUserId)
+    
+    // Inicjalizacja wybranej firmy z localStorage
+    const storedCompany = localStorage.getItem('selectedCompany')
+    if (storedCompany) {
+      try {
+        const company = JSON.parse(storedCompany)
+        console.log(`[KSEF] Inicjalizacja - wybrana firma z localStorage:`, company)
+        setSelectedCompany(company)
+      } catch (e) {
+        console.error('Błąd parsowania firmy z localStorage:', e)
+        setSelectedCompany(null)
       }
     }
   }, []) // Tylko przy mount
 
-  // Effect do monitorowania zmian wybranej firmy w localStorage
+  // useEffect do aktualizacji kontekstu autoryzacji w realnym czasie
+  useEffect(() => {
+    const updateAuthContext = () => {
+      // Pobierz użytkownika
+      const userId = localStorage.getItem('currentUserId') || currentUserId || 'user700'
+      
+      // Pobierz tenant użytkownika
+      let tenantId = 'tenant125' // domyślny
+      const storedUser = localStorage.getItem('currentUser')
+      if (storedUser) {
+        try {
+          const user = JSON.parse(storedUser)
+          if (user.tenant_id) {
+            tenantId = user.tenant_id
+          }
+        } catch (e) {
+          console.error('Błąd parsowania użytkownika dla kontekstu:', e)
+        }
+      }
+      
+      // Pobierz firmę
+      let company = null
+      const storedCompany = localStorage.getItem('selectedCompany')
+      if (storedCompany) {
+        try {
+          const parsedCompany = JSON.parse(storedCompany)
+          company = { id: parsedCompany.company_id, name: parsedCompany.company_name }
+        } catch (e) {
+          console.error('Błąd parsowania firmy z localStorage:', e)
+        }
+      }
+      
+      setAuthContext({
+        user: userId,
+        company: company,
+        tenant: tenantId // Używamy tenant z danych użytkownika
+      })
+    }
+
+    // Aktualizuj przy mount
+    updateAuthContext()
+
+    // Nasłuchuj zmian w localStorage
+    const handleStorageChange = () => updateAuthContext()
+    
+    // Nasłuchuj custom events z Header
+    const handleCompanyChange = () => updateAuthContext()
+
+    window.addEventListener('storage', handleStorageChange)
+    window.addEventListener('companyChanged', handleCompanyChange)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('companyChanged', handleCompanyChange)
+    }
+  }, [currentUserId])
+
+  // Effect do monitorowania zmian wybranej firmy w localStorage dla uprawnień OPA
   useEffect(() => {
     const handleStorageChange = () => {
+      // Sprawdź zmiany użytkownika
+      const storedUserId = localStorage.getItem('currentUserId') || 'user700'
+      if (storedUserId !== currentUserId) {
+        setCurrentUserId(storedUserId)
+      }
+      
+      // Sprawdź zmiany firmy
       const storedCompany = localStorage.getItem('selectedCompany')
       if (storedCompany) {
         try {
@@ -373,14 +475,14 @@ export default function KSEFPage() {
         </aside>
 
         {/* Zawartość główna */}
-        <main className="flex-1 p-8">
+        <main className="flex-1 p-4 w-full max-w-none">
           {/* Debug Info - Kontekst użytkownika i firmy */}
           <div className="mb-6 p-4 bg-gray-50 rounded-lg border">
             <h3 className="text-sm font-medium text-gray-700 mb-2">Kontekst autoryzacji:</h3>
             <div className="text-xs text-gray-600 space-y-1">
-              <div>Użytkownik: {typeof window !== 'undefined' ? localStorage.getItem('currentUserId') || 'user700' : 'ładowanie...'}</div>
-              <div>Tenant: tenant125</div>
-              <div>Wybrana firma: {selectedCompany ? `${selectedCompany.company_id} (${selectedCompany.company_name})` : 'Brak'}</div>
+              <div>Użytkownik: {isClient ? (authContext.user || 'ładowanie...') : 'ładowanie...'}</div>
+              <div>Tenant: {authContext.tenant}</div>
+              <div>Wybrana firma: {authContext.company ? `${authContext.company.id} (${authContext.company.name})` : 'Brak wybranej firmy'}</div>
               <div>Uprawnienia: {permissions.isLoading ? 'Sprawdzanie...' : `Zakup: ${permissions.canViewPurchase}, Sprzedaż: ${permissions.canViewSales}`}</div>
             </div>
           </div>
@@ -401,9 +503,21 @@ export default function KSEFPage() {
           {/* Wyświetl odpowiednią zakładkę */}
           {selectedTab === "dashboard" && <KsefDashboard />}
 
-          {selectedTab === "purchase-invoices" && <PurchaseInvoicesTab />}
+          {selectedTab === "purchase-invoices" && (
+            <PurchaseInvoicesTab 
+              userId={currentUserId || 'user700'} 
+              tenantId={authContext.tenant || 'tenant125'} 
+              companyId={selectedCompany?.company_id} 
+            />
+          )}
           
-          {selectedTab === "sales-invoices" && <SalesInvoicesTab />}
+          {selectedTab === "sales-invoices" && (
+            <SalesInvoicesTab 
+              userId={currentUserId || 'user700'} 
+              tenantId={authContext.tenant || 'tenant125'} 
+              companyId={selectedCompany?.company_id} 
+            />
+          )}
 
           {selectedTab === "reports" && <ReportsTab />}
 

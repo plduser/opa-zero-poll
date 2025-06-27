@@ -3,12 +3,20 @@ import { NextResponse } from 'next/server'
 // Environment variable z fallback dla local development
 const DATA_PROVIDER_API_URL = process.env.DATA_PROVIDER_API_URL || 'http://localhost:8110'
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    console.log('[API Users] Pobieranie użytkowników z Data Provider API...')
+    // Pobierz parametry URL
+    const { searchParams } = new URL(request.url)
+    const tenantId = searchParams.get('tenant_id')
     
-    // Połącz się z Data Provider API
-    const response = await fetch(`${DATA_PROVIDER_API_URL}/api/users/for-portal`, {
+    console.log('[API Users] Pobieranie użytkowników z Data Provider API...', tenantId ? `dla tenant: ${tenantId}` : 'wszystkich')
+    
+    // Połącz się z Data Provider API z opcjonalnym filtrem tenant_id
+    const apiUrl = tenantId 
+      ? `${DATA_PROVIDER_API_URL}/api/users/for-portal?tenant_id=${tenantId}`
+      : `${DATA_PROVIDER_API_URL}/api/users/for-portal`
+      
+    const response = await fetch(apiUrl, {
       headers: {
         'Content-Type': 'application/json',
       },
@@ -30,7 +38,10 @@ export async function GET() {
       initials: user.initials || (user.full_name ? user.full_name.split(' ').map((n: string) => n[0]).join('').toUpperCase() : 'NU'),
       role: user.role || 'użytkownik',
       tenants: user.tenants || [],
-      status: user.status || 'active'
+      // Ekstraktuj pierwszy tenant jako domyślny tenant_id
+      tenant_id: user.tenants?.[0]?.tenant_id || user.tenants?.[0]?.id || 'tenant125',
+      status: user.status || 'active',
+      department: user.department || 'Ogólny'  // DODANO: przekazywanie departamentu z Data Provider API
     })).filter((user: any) => user.status === 'active') || []
 
     

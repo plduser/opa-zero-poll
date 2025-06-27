@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
     
     console.log('🔄 [API Proxy] Przekazywanie zapytania do OPA:', body)
     
-    const opaResponse = await fetch(`${OPA_BASE_URL}/v1/data/ksef/decision`, {
+    const opaResponse = await fetch(`${OPA_BASE_URL}/v1/data/ksef/allow`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -24,7 +24,18 @@ export async function POST(request: NextRequest) {
     
     console.log('✅ [API Proxy] Odpowiedź z OPA:', data)
     
-    return NextResponse.json(data)
+    const transformedResponse = {
+      result: {
+        allow: data.result,
+        user: body.input.user,
+        action: body.input.action,
+        company_id: body.input.company_id,
+        user_roles: [],
+        reason: data.result ? "Access granted" : "Access denied"
+      }
+    }
+    
+    return NextResponse.json(transformedResponse)
   } catch (error) {
     console.error('❌ [API Proxy] Błąd komunikacji z OPA:', error)
     
@@ -32,13 +43,10 @@ export async function POST(request: NextRequest) {
       { 
         result: {
           allow: false,
-          decision: {
-            allow: false,
-            user: '',
-            action: '',
-            user_roles: [],
-            reason: `Proxy error: ${error}`
-          }
+          user: '',
+          action: '',
+          user_roles: [],
+          reason: `Proxy error: ${error}`
         }
       },
       { status: 500 }

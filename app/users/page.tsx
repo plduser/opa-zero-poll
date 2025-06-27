@@ -34,6 +34,7 @@ import { PortalSettingsDropdown } from "@/app/components/portal-settings-dropdow
 import { AppSidebar } from "@/components/app-sidebar"
 import { AppHeader } from "@/components/app-header"
 import { useAppMenu } from "@/hooks/use-app-menu"
+import { useUserContext } from "@/hooks/use-user-context"
 // Importuj komponent EditUserDialog
 import { EditUserDialog } from "./edit-user-dialog"
 // Importuj dialogi dostępu
@@ -62,6 +63,7 @@ import {
 export default function UsersPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const { menuItems, activeItem, currentApp } = useAppMenu()
+  const { tenantId, isLoading: isContextLoading } = useUserContext()
   const [showSuccessMessage, setShowSuccessMessage] = useState(false)
   const [successMessage, setSuccessMessage] = useState("")
   const [showErrorMessage, setShowErrorMessage] = useState(false)
@@ -120,13 +122,17 @@ export default function UsersPage() {
   // Load data from API
   useEffect(() => {
     const loadData = async () => {
+      if (isContextLoading || !tenantId) return
+      
       try {
         setLoading(true)
         setError(null)
         
+        console.log(`[Użytkownicy] Ładowanie użytkowników dla tenant: ${tenantId}`)
+        
         // Fetch users and applications concurrently
         const [apiUsers, apiApplications] = await Promise.all([
-          fetchUsers(),
+          fetchUsers(tenantId),
           fetchApplications()
         ])
         
@@ -158,13 +164,15 @@ export default function UsersPage() {
     }
     
     loadData()
-  }, [])
+  }, [tenantId, isContextLoading])
 
   // Helper function to refresh data
   const refreshData = async () => {
+    if (!tenantId) return
+    
     try {
       const [apiUsers, apiApplications] = await Promise.all([
-        fetchUsers(),
+        fetchUsers(tenantId),
         fetchApplications()
       ])
       
@@ -1433,11 +1441,12 @@ export default function UsersPage() {
         />
       )}
 
-      {userForTeamAccess && (
+      {userForTeamAccess && tenantId && (
         <TeamAssignmentDialog
           open={isAddTeamDialogOpen}
           onOpenChange={setIsAddTeamDialogOpen}
           user={userForTeamAccess}
+          tenantId={tenantId}
           onSuccess={handleTeamAssignmentSuccess}
           onError={(message) => {
             showError(message)

@@ -7,6 +7,8 @@ import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import os
+import random
+import string
 
 # Import User Data Sync Service
 try:
@@ -241,7 +243,10 @@ def register_users_endpoints(app):
         
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                user_id = f"user_{int(datetime.datetime.utcnow().timestamp())}"
+                # Generator user_id z timestampem + losowy sufiks (zabezpieczenie przed duplikatami)
+                timestamp = int(datetime.datetime.utcnow().timestamp())
+                random_suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=4))
+                user_id = f"user_{timestamp}_{random_suffix}"
                 
                 cur.execute("""
                     INSERT INTO users (user_id, username, email, full_name, status)
@@ -662,6 +667,8 @@ def register_users_endpoints(app):
         
         # Parametr do filtrowania użytkowników bez tenantów (domyślnie true)
         hide_users_without_tenants = request.args.get('hide_users_without_tenants', 'true').lower() == 'true'
+        # Parametr do filtrowania po tenant_id
+        tenant_id_filter = request.args.get('tenant_id')
         
         conn = get_db_connection()
         if not conn:
@@ -669,14 +676,15 @@ def register_users_endpoints(app):
         
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                # Pobierz użytkowników z ich tenantami i podstawowymi rolami
-                cur.execute("""
+                # Pobierz użytkowników z ich tenantami i podstawowymi rolami, dodając department
+                base_query = """
                     SELECT DISTINCT
                         u.user_id,
                         u.username,
                         u.email,
                         u.full_name,
                         u.status,
+                        u.metadata,
                         ut.tenant_id,
                         ut.is_default,
                         t.tenant_name
@@ -684,10 +692,31 @@ def register_users_endpoints(app):
                     LEFT JOIN user_tenants ut ON u.user_id = ut.user_id AND ut.is_active = true
                     LEFT JOIN tenants t ON ut.tenant_id = t.tenant_id
                     WHERE u.status = 'active'
-                    ORDER BY u.full_name, ut.is_default DESC
-                """)
+                """
+                
+                # Dodaj filtrowanie po tenant_id jeśli podane
+                if tenant_id_filter:
+                    base_query += " AND ut.tenant_id = %s"
+                    cur.execute(base_query + " ORDER BY u.full_name, ut.is_default DESC", (tenant_id_filter,))
+                    logger.info(f"🔍 Filtrowanie użytkowników po tenant_id: {tenant_id_filter}")
+                else:
+                    cur.execute(base_query + " ORDER BY u.full_name, ut.is_default DESC")
                 
                 users_data = cur.fetchall()
+                
+                # Mapowanie ról na działy
+                role_department_map = {
+                    'admin': 'IT',
+                    'administrator': 'IT', 
+                    'hr_manager': 'Kadry',
+                    'ksef_admin': 'Księgowość',
+                    'accountant': 'Księgowość',
+                    'ebiuro_user': 'Administracja',
+                    'edok_specialist': 'Sekretariat',
+                    'sales_rep': 'Sprzedaż',
+                    'test_developer': 'IT',
+                    'external_accountant': 'Księgowość'
+                }
                 
                 # Grupuj użytkowników z ich tenantami
                 users_dict = {}
@@ -699,6 +728,35 @@ def register_users_endpoints(app):
                         name_parts = full_name.split()
                         initials = ''.join([part[0].upper() for part in name_parts if part])[:2]
                         
+                        # Pobierz department z metadata lub wygeneruj na podstawie username/roli
+                        metadata = user_data.get('metadata') or {}
+                        department = metadata.get('department')
+                        
+                        # Jeśli nie ma department w metadata, wygeneruj na podstawie username
+                        if not department:
+                            username = user_data['username'] or ''
+                            # Spróbuj username jako klucz
+                            department = role_department_map.get(username)
+                            
+                            # Jeśli nie znaleziono, spróbuj extrapolować z username
+                            if not department:
+                                if 'admin' in username.lower():
+                                    department = 'IT'
+                                elif 'hr' in username.lower() or 'kadry' in username.lower():
+                                    department = 'Kadry'
+                                elif 'ksef' in username.lower() or 'accountant' in username.lower() or 'ksieg' in username.lower():
+                                    department = 'Księgowość'
+                                elif 'ebiuro' in username.lower():
+                                    department = 'Administracja'
+                                elif 'edok' in username.lower():
+                                    department = 'Sekretariat'
+                                elif 'sales' in username.lower() or 'sprzed' in username.lower():
+                                    department = 'Sprzedaż'
+                                elif 'dev' in username.lower():
+                                    department = 'IT'
+                                else:
+                                    department = 'Ogólny'
+                        
                         users_dict[user_id] = {
                             'id': user_id,
                             'username': user_data['username'],
@@ -706,6 +764,8 @@ def register_users_endpoints(app):
                             'full_name': full_name,
                             'initials': initials,
                             'status': user_data['status'],
+                            'department': department,
+                            'metadata': metadata,
                             'tenants': []
                         }
                     

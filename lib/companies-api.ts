@@ -1,5 +1,5 @@
-// Companies API - zarządzanie firmami z data-provider-api
-const DATA_API_BASE_URL = 'http://localhost:8110/api'
+// Companies API - zarządzanie firmami przez Next.js proxy
+const DATA_API_BASE_URL = '/api'
 
 export interface Company {
   company_id: string

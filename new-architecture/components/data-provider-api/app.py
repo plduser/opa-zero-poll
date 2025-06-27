@@ -160,12 +160,12 @@ def get_tenant_acl(tenant_id):
         tenant_data = get_tenant_acl_from_database(tenant_id)
         
         if tenant_data:
-            logger.info(f"Returning database ACL data for tenant {tenant_id}: {len(tenant_data.get('users', {}))} users")
+            logger.info(f"Returning database ACL data for tenant {tenant_id}")
+            # tenant_data już zawiera pełną strukturę z "data" wewnątrz
             return jsonify({
-                "tenant_id": tenant_id,
-                "data": tenant_data,
+                **tenant_data,  # Rozpakuj tenant_data (tenant_id, data)
                 "timestamp": datetime.datetime.utcnow().isoformat(),
-                "model": "1",
+                "model": "2_raw_data",
                 "source": "database"
             })
         else:
